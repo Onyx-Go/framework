@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	httpInternal "github.com/onyx-go/framework/internal/http"
+	contextImpl "github.com/onyx-go/framework/internal/http/context"
 )
 
 // APIVersion represents an API version configuration
@@ -372,7 +375,7 @@ func (vr *VersionedRouter) Version(version string) *Router {
 }
 
 // Route routes request to the appropriate version
-func (vr *VersionedRouter) Route(c *Context) error {
+func (vr *VersionedRouter) Route(c Context) error {
 	version := vr.manager.ExtractRequestVersion(c)
 	
 	router, exists := vr.routers[version]
@@ -381,7 +384,7 @@ func (vr *VersionedRouter) Route(c *Context) error {
 	}
 	
 	// Delegate to version-specific router
-	router.ServeHTTP(c.ResponseWriter, c.Request)
+	router.ServeHTTP(c.ResponseWriter(), c.Request())
 	return nil
 }
 
@@ -548,7 +551,7 @@ func NewVersionedRouteGroup(manager *APIVersionManager, version string, router *
 // Use adds middleware to the versioned group
 func (vg *VersionedRouteGroup) Use(middleware ...MiddlewareFunc) {
 	vg.middleware = append(vg.middleware, middleware...)
-	vg.baseGroup.router.Use(middleware...)
+	vg.baseGroup.Use(middleware...)
 }
 
 // Get adds a GET route to the versioned group
@@ -579,6 +582,24 @@ func (vg *VersionedRouteGroup) Delete(pattern string, handler HandlerFunc, middl
 func (vg *VersionedRouteGroup) Patch(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
 	allMiddleware := append(vg.middleware, middleware...)
 	vg.baseGroup.Patch(pattern, handler, allMiddleware...)
+}
+
+// Helper functions for VersionedRouteGroup
+func (vg *VersionedRouteGroup) convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
+	return func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+}
+
+func (vg *VersionedRouteGroup) convertMiddleware(middleware ...MiddlewareFunc) []httpInternal.MiddlewareFunc {
+	var converted []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		convertedMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		converted = append(converted, convertedMw)
+	}
+	return converted
 }
 
 // Utility functions
@@ -632,7 +653,7 @@ func GetVersionInfoFromContext(c Context) *APIVersion {
 }
 
 // IsVersionDeprecated checks if the current request version is deprecated
-func IsVersionDeprecated(c *Context) bool {
+func IsVersionDeprecated(c Context) bool {
 	if versionInfo := GetVersionInfoFromContext(c); versionInfo != nil {
 		return versionInfo.Deprecated
 	}

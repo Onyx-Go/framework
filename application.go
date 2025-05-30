@@ -129,7 +129,7 @@ type Application struct {
 }
 
 func New() *Application {
-	r := router.NewRouter()
+	r := routerImpl.NewRouter()
 	app := &Application{
 		router:    r,
 		config:    NewConfig(),
@@ -179,6 +179,7 @@ func New() *Application {
 	// Setup error handling
 	SetupErrorHandling(false) // Set to true for debug mode
 	
+	// Use internal middleware directly since they already use the correct interface
 	app.router.Use(LoggerMiddleware())
 	app.router.Use(RecoveryMiddleware())
 	app.router.Use(ErrorHandlerMiddleware(GetErrorHandler()))
@@ -404,7 +405,20 @@ type TemplateEngineAdapter struct {
 }
 
 func (a *TemplateEngineAdapter) Render(template string, data interface{}) (string, error) {
-	return a.engine.Render(template, data)
+	// Convert interface{} to ViewData
+	var viewData ViewData
+	if data != nil {
+		if vd, ok := data.(ViewData); ok {
+			viewData = vd
+		} else if m, ok := data.(map[string]interface{}); ok {
+			viewData = ViewData(m)
+		} else {
+			viewData = ViewData{"data": data}
+		}
+	} else {
+		viewData = ViewData{}
+	}
+	return a.engine.Render(template, viewData)
 }
 
 func LoggerMiddleware() httpInternal.MiddlewareFunc {
