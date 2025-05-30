@@ -1,0 +1,38 @@
+{{define "content"}}
+<div style="text-align: center;">
+    <h2>Welcome to Onyx! 🎉</h2>
+    <p>You're running a Laravel-inspired framework built with Go.</p>
+    
+    <div style="margin: 30px 0;">
+        <h3>✨ Features</h3>
+        <ul style="text-align: left; display: inline-block;">
+            <li>🛣️ Expressive routing with parameter binding</li>
+            <li>🔧 Powerful middleware system</li>
+            <li>📦 Dependency injection container</li>
+            <li>🗄️ Database ORM and query builder</li>
+            <li>⚙️ Configuration management</li>
+            <li>🎨 Template engine with layouts</li>
+            <li>✅ Request validation</li>
+            <li>🔨 CLI tools for scaffolding</li>
+        </ul>
+    </div>
+
+    <div style="margin: 30px 0;">
+        <h3>🚀 Quick Start</h3>
+        <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px; text-align: left;">
+app := framework.New()
+
+app.Get("/", func(c *framework.Context) error {
+    return c.String(200, "Hello Onyx!")
+})
+
+app.Start(":8080")
+        </pre>
+    </div>
+
+    <div style="margin: 30px 0;">
+        <a href="/users" style="background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 0 10px;">View Users</a>
+        <a href="/api/users" style="background: #764ba2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 0 10px;">API Demo</a>
+    </div>
+</div>
+{{end}}

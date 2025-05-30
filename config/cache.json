@@ -1,0 +1,35 @@
+{
+  "default": "file",
+  "stores": {
+    "array": {
+      "driver": "array",
+      "serialize": false
+    },
+    "file": {
+      "driver": "file",
+      "path": "storage/cache"
+    },
+    "redis": {
+      "driver": "redis",
+      "connection": "cache"
+    },
+    "memcached": {
+      "driver": "memcached",
+      "persistent_id": null,
+      "sasl": {
+        "username": null,
+        "password": null
+      },
+      "options": {},
+      "servers": [
+        {
+          "host": "127.0.0.1",
+          "port": 11211,
+          "weight": 100
+        }
+      ]
+    }
+  },
+  "prefix": "onyx_cache",
+  "ttl": "1h"
+}

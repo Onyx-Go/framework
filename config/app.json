@@ -1,0 +1,18 @@
+{
+  "name": "Onyx Application",
+  "version": "1.0.0",
+  "timezone": "UTC",
+  "locale": "en",
+  "fallback_locale": "en",
+  "debug": false,
+  "url": "http://localhost",
+  "asset_url": null,
+  "encryption": {
+    "key": "base64:generated-key-here",
+    "cipher": "AES-256-CBC"
+  },
+  "maintenance": {
+    "driver": "file",
+    "store": "redis"
+  }
+}

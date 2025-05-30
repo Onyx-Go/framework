@@ -1,0 +1,64 @@
+{
+  "default": "postgres",
+  "connections": {
+    "sqlite": {
+      "driver": "sqlite3",
+      "database": "storage/database.sqlite",
+      "foreign_key_constraints": true
+    },
+    "mysql": {
+      "driver": "mysql",
+      "host": "localhost",
+      "port": 3306,
+      "database": "onyx",
+      "username": "root",
+      "password": "",
+      "charset": "utf8mb4",
+      "collation": "utf8mb4_unicode_ci",
+      "strict": true,
+      "engine": null
+    },
+    "postgres": {
+      "driver": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "database": "onyx",
+      "username": "postgres",
+      "password": "",
+      "charset": "utf8",
+      "schema": "public",
+      "sslmode": "disable"
+    }
+  },
+  "migrations": {
+    "table": "migrations",
+    "update_date_on_publish": true
+  },
+  "redis": {
+    "client": "redis",
+    "options": {
+      "cluster": "redis"
+    },
+    "default": {
+      "url": null,
+      "host": "localhost",
+      "password": null,
+      "port": 6379,
+      "database": 0
+    },
+    "cache": {
+      "url": null,
+      "host": "localhost",
+      "password": null,
+      "port": 6379,
+      "database": 1
+    },
+    "sessions": {
+      "url": null,
+      "host": "localhost",
+      "password": null,
+      "port": 6379,
+      "database": 2
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{{define "content"}}
+<h2>👥 Users</h2>
+<p>Here's a list of users from our database:</p>
+
+<div style="margin: 20px 0;">
+    {{range .users}}
+    <div style="background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #667eea;">
+        <h4 style="margin: 0 0 5px 0;">{{.Name}}</h4>
+        <p style="margin: 0; color: #666;">📧 {{.Email}}</p>
+        <p style="margin: 5px 0 0 0; color: #999;">ID: {{.ID}}</p>
+    </div>
+    {{end}}
+</div>
+
+<div style="margin: 30px 0;">
+    <h3>🔗 API Endpoints</h3>
+    <ul style="text-align: left;">
+        <li><code>GET /api/users</code> - Get all users</li>
+        <li><code>GET /api/users/{id}</code> - Get user by ID</li>
+        <li><code>POST /api/users</code> - Create new user</li>
+    </ul>
+</div>
+
+<div style="margin: 20px 0;">
+    <a href="/api/users" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View JSON API</a>
+    <a href="/" style="background: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-left: 10px;">← Back Home</a>
+</div>
+{{end}}
