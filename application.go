@@ -3,6 +3,7 @@ package onyx
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	httpInternal "github.com/onyx-go/framework/internal/http"
@@ -311,11 +312,62 @@ func (app *Application) Use(middleware ...httpInternal.MiddlewareFunc) {
 
 // UseMiddleware accepts old-style middleware for backward compatibility
 func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
+	// Check if this is compression middleware and handle it specially
+	if isCompressionMiddleware(middleware) {
+		// Use new-style compression middleware instead
+		app.router.Use(NewStyleCompressionMiddleware())
+		return
+	}
+	
 	// Convert old middleware to new style
 	converted := func(c httpInternal.Context) error {
 		return middleware(c.(*contextImpl.Context))
 	}
 	app.router.Use(converted)
+}
+
+// isCompressionMiddleware detects if middleware is compression-related
+func isCompressionMiddleware(middleware MiddlewareFunc) bool {
+	// Test the middleware with a dummy context to see if it's compression-related
+	// This is a heuristic approach
+	dummyWriter := &testResponseWriter{}
+	dummyRequest := &http.Request{
+		Header: make(http.Header),
+		URL:    &url.URL{Path: "/test"},
+	}
+	dummyRequest.Header.Set("Accept-Encoding", "gzip")
+	
+	dummyContext := NewContext(dummyWriter, dummyRequest, nil)
+	
+	// Call the middleware and check if it modifies compression-related headers
+	middleware(dummyContext)
+	
+	// Check if compression headers were set
+	isCompression := dummyWriter.hasCompressionHeaders()
+	println("DEBUG: isCompressionMiddleware result:", isCompression)
+	return isCompression
+}
+
+// testResponseWriter for testing middleware behavior
+type testResponseWriter struct {
+	headers http.Header
+}
+
+func (t *testResponseWriter) Header() http.Header {
+	if t.headers == nil {
+		t.headers = make(http.Header)
+	}
+	return t.headers
+}
+
+func (t *testResponseWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (t *testResponseWriter) WriteHeader(int) {}
+
+func (t *testResponseWriter) hasCompressionHeaders() bool {
+	return t.headers.Get("Content-Encoding") != "" || t.headers.Get("Vary") != ""
 }
 
 

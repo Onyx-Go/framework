@@ -3,12 +3,9 @@ package onyx
 import (
 	"compress/gzip"
 	"net/http"
-	"reflect"
 	"strings"
-	"unsafe"
 	
 	httpInternal "github.com/onyx-go/framework/internal/http"
-	contextImpl "github.com/onyx-go/framework/internal/http/context"
 )
 
 // CompressionConfig configures compression middleware
@@ -209,37 +206,9 @@ func CompressionMiddleware(config ...CompressionConfig) MiddlewareFunc {
 			ResponseWriter: c.ResponseWriter(),
 		}
 		
-		// Use unsafe pointer manipulation to replace the responseWriter temporarily
-		var err error
-		if ctxImpl, ok := c.(*contextImpl.Context); ok {
-			// Get the struct type to find the offset of responseWriter field
-			structType := reflect.TypeOf(*ctxImpl)
-			responseWriterField, found := structType.FieldByName("responseWriter")
-			
-			if found {
-				// Calculate the address of the responseWriter field
-				baseAddr := uintptr(unsafe.Pointer(ctxImpl))
-				fieldAddr := baseAddr + responseWriterField.Offset
-				
-				// Store original writer
-				originalWriter := *(*http.ResponseWriter)(unsafe.Pointer(fieldAddr))
-				
-				// Replace with buffer writer
-				*(*http.ResponseWriter)(unsafe.Pointer(fieldAddr)) = bufferWriter
-				
-				// Call next - this will write to the buffer
-				err = c.Next()
-				
-				// Restore original writer
-				*(*http.ResponseWriter)(unsafe.Pointer(fieldAddr)) = originalWriter
-			} else {
-				println("DEBUG: responseWriter field not found")
-				err = c.Next()
-			}
-		} else {
-			println("DEBUG: Context is not contextImpl.Context")
-			err = c.Next()
-		}
+		// For now, just call Next() without buffering
+		// The middleware detection should handle using new-style compression
+		err := c.Next()
 		
 		if err != nil {
 			return err
@@ -344,22 +313,82 @@ func NewStyleCompressionMiddleware(config ...CompressionConfig) httpInternal.Mid
 			}
 		}
 		
-		// Wrap the response writer with compression
-		compressedWriter := NewCompressedResponseWriter(c.ResponseWriter(), cfg)
-		
-		// Create a wrapper context that returns our compressed writer
-		wrapper := &newStyleCompressedContextWrapper{
-			Context: c,
-			writer:  compressedWriter,
+		// Create a buffer to capture the response
+		buffer := &BufferResponseWriter{
+			ResponseWriter: c.ResponseWriter(),
 		}
 		
-		// Call next with the wrapped context
+		// Replace the response writer temporarily using reflection/unsafe
+		originalWriter := c.ResponseWriter()
+		
+		// We need to modify the context to use our buffer writer
+		// Since the internal context uses ResponseWriter() method calls, 
+		// we can create a temporary wrapper
+		wrapper := &responseWriterReplacer{
+			Context: c,
+			writer:  buffer,
+		}
+		
+		// Call next - this should write to our buffer
 		err := wrapper.Next()
+		if err != nil {
+			return err
+		}
 		
-		// Make sure to close the gzip writer
-		compressedWriter.Close()
+		println("DEBUG NEW: Buffer size:", len(buffer.body))
+		println("DEBUG NEW: Status code:", buffer.statusCode)
 		
-		return err
+		// Now process the buffered response
+		contentType := buffer.Header().Get("Content-Type")
+		if contentType == "" {
+			contentType = http.DetectContentType(buffer.body)
+		}
+		
+		shouldCompress := len(buffer.body) >= cfg.MinLength && 
+						 buffer.statusCode >= 200 && 
+						 buffer.statusCode < 300 &&
+						 shouldCompressContentType(contentType, cfg)
+		
+		println("DEBUG NEW: Should compress:", shouldCompress)
+		
+		if shouldCompress {
+			// Set compression headers on original writer
+			originalWriter.Header().Set("Content-Encoding", "gzip")
+			originalWriter.Header().Set("Vary", "Accept-Encoding")
+			originalWriter.Header().Del("Content-Length")
+			
+			// Copy other headers from buffer to original
+			for key, values := range buffer.Header() {
+				if key != "Content-Length" {
+					for _, value := range values {
+						originalWriter.Header().Set(key, value)
+					}
+				}
+			}
+			
+			// Write status
+			originalWriter.WriteHeader(buffer.statusCode)
+			
+			// Compress and write content
+			gzipWriter, err := gzip.NewWriterLevel(originalWriter, cfg.Level)
+			if err != nil {
+				return err
+			}
+			defer gzipWriter.Close()
+			
+			_, err = gzipWriter.Write(buffer.body)
+			return err
+		} else {
+			// Write uncompressed
+			for key, values := range buffer.Header() {
+				for _, value := range values {
+					originalWriter.Header().Set(key, value)
+				}
+			}
+			originalWriter.WriteHeader(buffer.statusCode)
+			_, err := originalWriter.Write(buffer.body)
+			return err
+		}
 	}
 }
 
@@ -415,4 +444,14 @@ func shouldCompressContentType(contentType string, config CompressionConfig) boo
 		}
 	}
 	return false
+}
+
+// responseWriterReplacer wraps a context to replace the ResponseWriter
+type responseWriterReplacer struct {
+	httpInternal.Context
+	writer http.ResponseWriter
+}
+
+func (r *responseWriterReplacer) ResponseWriter() http.ResponseWriter {
+	return r.writer
 }

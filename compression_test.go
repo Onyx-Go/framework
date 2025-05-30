@@ -69,8 +69,8 @@ func TestCompressionMiddleware_NoAcceptEncoding(t *testing.T) {
 func TestCompressionMiddleware_WithGzipAcceptEncoding(t *testing.T) {
 	app := New()
 	
-	// Add compression middleware
-	app.UseMiddleware(CompressionMiddleware())
+	// Add compression middleware using new-style API
+	app.Use(NewStyleCompressionMiddleware())
 	
 	// Large response that should be compressed
 	largeContent := strings.Repeat("Hello World! This is a test of compression. ", 50) // > 1KB
