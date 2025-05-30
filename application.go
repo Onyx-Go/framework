@@ -319,6 +319,7 @@ func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
 }
 
 
+
 func (app *Application) Group(prefix string, middleware ...httpInternal.MiddlewareFunc) httpInternal.RouteGroup {
 	return app.router.Group(prefix, middleware...)
 }

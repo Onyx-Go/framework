@@ -3,7 +3,12 @@ package onyx
 import (
 	"compress/gzip"
 	"net/http"
+	"reflect"
 	"strings"
+	"unsafe"
+	
+	httpInternal "github.com/onyx-go/framework/internal/http"
+	contextImpl "github.com/onyx-go/framework/internal/http/context"
 )
 
 // CompressionConfig configures compression middleware
@@ -41,10 +46,12 @@ func DefaultCompressionConfig() CompressionConfig {
 // CompressedResponseWriter wraps http.ResponseWriter to provide gzip compression
 type CompressedResponseWriter struct {
 	http.ResponseWriter
-	gzipWriter  *gzip.Writer
-	config      CompressionConfig
-	wroteHeader bool
-	statusCode  int
+	gzipWriter     *gzip.Writer
+	config         CompressionConfig
+	wroteHeader    bool
+	statusCode     int
+	buffer         []byte
+	compressionSet bool
 }
 
 // NewCompressedResponseWriter creates a new compressed response writer
@@ -68,48 +75,62 @@ func (crw *CompressedResponseWriter) WriteHeader(statusCode int) {
 	}
 	
 	crw.statusCode = statusCode
-	crw.wroteHeader = true
 	
-	// Don't compress error responses or redirects
+	// Don't compress error responses or redirects - write immediately
 	if statusCode < 200 || statusCode >= 300 {
+		crw.wroteHeader = true
+		crw.compressionSet = true
 		crw.ResponseWriter.WriteHeader(statusCode)
 		return
 	}
 	
-	// Check if content type should be compressed
-	contentType := crw.Header().Get("Content-Type")
-	if contentType == "" {
-		contentType = "text/plain"
-	}
-	
-	if crw.shouldCompress(contentType) {
-		// Set compression headers
-		crw.Header().Set("Content-Encoding", "gzip")
-		crw.Header().Set("Vary", "Accept-Encoding")
-		crw.Header().Del("Content-Length") // Gzip will handle length
-		
-		// Write status header
-		crw.ResponseWriter.WriteHeader(statusCode)
-		
-		// Create gzip writer
-		var err error
-		crw.gzipWriter, err = gzip.NewWriterLevel(crw.ResponseWriter, crw.config.Level)
-		if err != nil {
-			// If we can't create gzip writer, this is a problem because we already set headers
-			// Best we can do is continue without the gzip writer
-			return
-		}
-	} else {
-		// Not compressing, write headers normally
-		crw.ResponseWriter.WriteHeader(statusCode)
-	}
+	// For success responses, delay writing headers until we have content
+	// This will be handled in the Write method
 }
 
 // Write writes the data to the connection as part of an HTTP reply
 func (crw *CompressedResponseWriter) Write(data []byte) (int, error) {
-	// Make sure headers are written first
-	if !crw.wroteHeader {
-		crw.WriteHeader(200)
+	// Buffer the data until we can make compression decision
+	if !crw.compressionSet {
+		crw.buffer = append(crw.buffer, data...)
+		
+		// Get content type and length to decide compression
+		contentType := crw.Header().Get("Content-Type")
+		if contentType == "" {
+			// Try to detect content type from data
+			contentType = http.DetectContentType(crw.buffer)
+			crw.Header().Set("Content-Type", contentType)
+		}
+		
+		// Decide compression based on content type and length
+		shouldCompress := len(crw.buffer) >= crw.config.MinLength && crw.shouldCompress(contentType)
+		
+		if shouldCompress && crw.statusCode >= 200 && crw.statusCode < 300 {
+			// Set compression headers
+			crw.Header().Set("Content-Encoding", "gzip")
+			crw.Header().Set("Vary", "Accept-Encoding")
+			crw.Header().Del("Content-Length") // Gzip will handle length
+			
+			// Create gzip writer
+			var err error
+			crw.gzipWriter, err = gzip.NewWriterLevel(crw.ResponseWriter, crw.config.Level)
+			if err != nil {
+				// Fall back to no compression
+				crw.compressionSet = true
+				return crw.writeBuffered()
+			}
+		}
+		
+		crw.compressionSet = true
+		
+		// Write headers if not already written
+		if !crw.wroteHeader {
+			crw.ResponseWriter.WriteHeader(crw.statusCode)
+			crw.wroteHeader = true
+		}
+		
+		// Write buffered data
+		return crw.writeBuffered()
 	}
 	
 	// If we have a gzip writer, use it
@@ -119,6 +140,25 @@ func (crw *CompressedResponseWriter) Write(data []byte) (int, error) {
 	
 	// Otherwise write directly
 	return crw.ResponseWriter.Write(data)
+}
+
+// writeBuffered writes all buffered data
+func (crw *CompressedResponseWriter) writeBuffered() (int, error) {
+	if len(crw.buffer) == 0 {
+		return 0, nil
+	}
+	
+	var written int
+	var err error
+	
+	if crw.gzipWriter != nil {
+		written, err = crw.gzipWriter.Write(crw.buffer)
+	} else {
+		written, err = crw.ResponseWriter.Write(crw.buffer)
+	}
+	
+	crw.buffer = nil // Clear buffer
+	return written, err
 }
 
 // shouldCompress determines if the response should be compressed based on content type
@@ -164,10 +204,103 @@ func CompressionMiddleware(config ...CompressionConfig) MiddlewareFunc {
 			}
 		}
 		
-		// TODO: Implement compression with interface-based system
-		// For now, just pass through without compression
-		// The interface-based system requires a different approach for response interception
-		return c.Next()
+		// Create a buffer response writer to capture the response
+		bufferWriter := &BufferResponseWriter{
+			ResponseWriter: c.ResponseWriter(),
+		}
+		
+		// Use unsafe pointer manipulation to replace the responseWriter temporarily
+		var err error
+		if ctxImpl, ok := c.(*contextImpl.Context); ok {
+			// Get the struct type to find the offset of responseWriter field
+			structType := reflect.TypeOf(*ctxImpl)
+			responseWriterField, found := structType.FieldByName("responseWriter")
+			
+			if found {
+				// Calculate the address of the responseWriter field
+				baseAddr := uintptr(unsafe.Pointer(ctxImpl))
+				fieldAddr := baseAddr + responseWriterField.Offset
+				
+				// Store original writer
+				originalWriter := *(*http.ResponseWriter)(unsafe.Pointer(fieldAddr))
+				
+				// Replace with buffer writer
+				*(*http.ResponseWriter)(unsafe.Pointer(fieldAddr)) = bufferWriter
+				
+				// Call next - this will write to the buffer
+				err = c.Next()
+				
+				// Restore original writer
+				*(*http.ResponseWriter)(unsafe.Pointer(fieldAddr)) = originalWriter
+			} else {
+				println("DEBUG: responseWriter field not found")
+				err = c.Next()
+			}
+		} else {
+			println("DEBUG: Context is not contextImpl.Context")
+			err = c.Next()
+		}
+		
+		if err != nil {
+			return err
+		}
+		
+		// Now check if we should compress the buffered content
+		contentType := bufferWriter.Header().Get("Content-Type")
+		if contentType == "" {
+			contentType = http.DetectContentType(bufferWriter.body)
+		}
+		
+		println("DEBUG: Buffer size:", len(bufferWriter.body))
+		println("DEBUG: Status code:", bufferWriter.statusCode)
+		println("DEBUG: Content type:", contentType)
+		println("DEBUG: Min length:", cfg.MinLength)
+		
+		shouldCompress := len(bufferWriter.body) >= cfg.MinLength && 
+						 bufferWriter.statusCode >= 200 && 
+						 bufferWriter.statusCode < 300 &&
+						 shouldCompressContentType(contentType, cfg)
+		
+		println("DEBUG: Should compress:", shouldCompress)
+		
+		if shouldCompress {
+			// Set compression headers
+			c.ResponseWriter().Header().Set("Content-Encoding", "gzip")
+			c.ResponseWriter().Header().Set("Vary", "Accept-Encoding")
+			c.ResponseWriter().Header().Del("Content-Length")
+			
+			// Copy other headers
+			for key, values := range bufferWriter.Header() {
+				if key != "Content-Length" {
+					for _, value := range values {
+						c.ResponseWriter().Header().Add(key, value)
+					}
+				}
+			}
+			
+			// Write status code
+			c.ResponseWriter().WriteHeader(bufferWriter.statusCode)
+			
+			// Compress and write the content
+			gzipWriter, err := gzip.NewWriterLevel(c.ResponseWriter(), cfg.Level)
+			if err != nil {
+				return err
+			}
+			defer gzipWriter.Close()
+			
+			_, err = gzipWriter.Write(bufferWriter.body)
+			return err
+		} else {
+			// Write uncompressed
+			for key, values := range bufferWriter.Header() {
+				for _, value := range values {
+					c.ResponseWriter().Header().Add(key, value)
+				}
+			}
+			c.ResponseWriter().WriteHeader(bufferWriter.statusCode)
+			_, err := c.ResponseWriter().Write(bufferWriter.body)
+			return err
+		}
 	}
 }
 
@@ -185,4 +318,101 @@ func CustomCompressionMiddleware(level int, minLength int, types []string) Middl
 		Exclude:   []string{},
 	}
 	return CompressionMiddleware(config)
+}
+
+// NewStyleCompressionMiddleware returns a new-style middleware that compresses HTTP responses
+func NewStyleCompressionMiddleware(config ...CompressionConfig) httpInternal.MiddlewareFunc {
+	var cfg CompressionConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	} else {
+		cfg = DefaultCompressionConfig()
+	}
+	
+	return func(c httpInternal.Context) error {
+		// Check if client accepts gzip
+		acceptEncoding := c.Request().Header.Get("Accept-Encoding")
+		if !strings.Contains(acceptEncoding, "gzip") {
+			return c.Next()
+		}
+		
+		// Check if path should be excluded
+		path := c.Request().URL.Path
+		for _, exclude := range cfg.Exclude {
+			if strings.HasPrefix(path, exclude) {
+				return c.Next()
+			}
+		}
+		
+		// Wrap the response writer with compression
+		compressedWriter := NewCompressedResponseWriter(c.ResponseWriter(), cfg)
+		
+		// Create a wrapper context that returns our compressed writer
+		wrapper := &newStyleCompressedContextWrapper{
+			Context: c,
+			writer:  compressedWriter,
+		}
+		
+		// Call next with the wrapped context
+		err := wrapper.Next()
+		
+		// Make sure to close the gzip writer
+		compressedWriter.Close()
+		
+		return err
+	}
+}
+
+// compressedContextWrapper wraps a Context to provide a different ResponseWriter
+type compressedContextWrapper struct {
+	Context
+	writer http.ResponseWriter
+}
+
+// ResponseWriter returns the wrapped response writer
+func (c *compressedContextWrapper) ResponseWriter() http.ResponseWriter {
+	return c.writer
+}
+
+// newStyleCompressedContextWrapper wraps a new-style Context
+type newStyleCompressedContextWrapper struct {
+	httpInternal.Context
+	writer *CompressedResponseWriter
+}
+
+// ResponseWriter returns the compressed response writer
+func (c *newStyleCompressedContextWrapper) ResponseWriter() http.ResponseWriter {
+	return c.writer
+}
+
+// BufferResponseWriter buffers the response to allow post-processing
+type BufferResponseWriter struct {
+	http.ResponseWriter
+	body       []byte
+	statusCode int
+}
+
+func (b *BufferResponseWriter) WriteHeader(statusCode int) {
+	if b.statusCode == 0 {
+		b.statusCode = statusCode
+	}
+}
+
+func (b *BufferResponseWriter) Write(data []byte) (int, error) {
+	if b.statusCode == 0 {
+		b.statusCode = 200
+	}
+	b.body = append(b.body, data...)
+	return len(data), nil
+}
+
+// shouldCompressContentType checks if content type should be compressed
+func shouldCompressContentType(contentType string, config CompressionConfig) bool {
+	contentType = strings.ToLower(contentType)
+	for _, ct := range config.Types {
+		if strings.Contains(contentType, ct) {
+			return true
+		}
+	}
+	return false
 }

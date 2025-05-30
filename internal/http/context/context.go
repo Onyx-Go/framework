@@ -79,31 +79,31 @@ func (c *Context) Header(key string) string {
 
 func (c *Context) Status(code int) {
 	c.statusCode = code
-	c.responseWriter.WriteHeader(code)
+	c.ResponseWriter().WriteHeader(code)
 }
 
 func (c *Context) SetHeader(key, value string) {
-	c.responseWriter.Header().Set(key, value)
+	c.ResponseWriter().Header().Set(key, value)
 }
 
 func (c *Context) String(code int, text string) error {
 	c.SetHeader("Content-Type", "text/plain")
 	c.Status(code)
-	_, err := c.responseWriter.Write([]byte(text))
+	_, err := c.ResponseWriter().Write([]byte(text))
 	return err
 }
 
 func (c *Context) JSON(code int, data interface{}) error {
 	c.SetHeader("Content-Type", "application/json")
 	c.Status(code)
-	encoder := json.NewEncoder(c.responseWriter)
+	encoder := json.NewEncoder(c.ResponseWriter())
 	return encoder.Encode(data)
 }
 
 func (c *Context) HTML(code int, html string) error {
 	c.SetHeader("Content-Type", "text/html")
 	c.Status(code)
-	_, err := c.responseWriter.Write([]byte(html))
+	_, err := c.ResponseWriter().Write([]byte(html))
 	return err
 }
 
@@ -205,7 +205,7 @@ func (c *Context) Cookie(name string) (*http.Cookie, error) {
 }
 
 func (c *Context) SetCookie(cookie *http.Cookie) {
-	http.SetCookie(c.responseWriter, cookie)
+	http.SetCookie(c.ResponseWriter(), cookie)
 }
 
 func (c *Context) UserAgent() string {

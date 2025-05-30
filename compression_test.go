@@ -86,6 +86,11 @@ func TestCompressionMiddleware_WithGzipAcceptEncoding(t *testing.T) {
 	
 	app.Router().ServeHTTP(w, req)
 	
+	// Debug: Print all headers
+	t.Logf("All response headers: %v", w.Header())
+	t.Logf("Content-Encoding: '%s'", w.Header().Get("Content-Encoding"))
+	t.Logf("Vary: '%s'", w.Header().Get("Vary"))
+	
 	// Should be compressed
 	if w.Header().Get("Content-Encoding") != "gzip" {
 		t.Error("Response should be compressed with gzip")
