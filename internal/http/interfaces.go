@@ -20,6 +20,7 @@ type Context interface {
 	QueryDefault(key, defaultValue string) string
 	Param(key string) string
 	Header(key string) string
+	RemoteIP() string
 	
 	// Response methods
 	Status(code int)
