@@ -551,7 +551,7 @@ func NewVersionedRouteGroup(manager *APIVersionManager, version string, router *
 // Use adds middleware to the versioned group
 func (vg *VersionedRouteGroup) Use(middleware ...MiddlewareFunc) {
 	vg.middleware = append(vg.middleware, middleware...)
-	vg.baseGroup.Use(middleware...)
+	// RouteGroup handles internal conversion, no need to call baseGroup.Use
 }
 
 // Get adds a GET route to the versioned group

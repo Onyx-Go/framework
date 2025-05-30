@@ -112,6 +112,23 @@ func (rg *RouteGroup) Delete(pattern string, handler HandlerFunc, middleware ...
 	rg.RouteGroup.Delete(pattern, internalHandler, internalMiddleware...)
 }
 
+func (rg *RouteGroup) Patch(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.PATCH(pattern, internalHandler, internalMiddleware...)
+}
+
 // Initialize the prefix field when creating RouteGroup wrappers
 func wrapRouteGroup(internal *routerImpl.RouteGroup) *RouteGroup {
 	return &RouteGroup{
@@ -182,7 +199,13 @@ func New() *Application {
 	// Use internal middleware directly since they already use the correct interface
 	app.router.Use(LoggerMiddleware())
 	app.router.Use(RecoveryMiddleware())
-	app.router.Use(ErrorHandlerMiddleware(GetErrorHandler()))
+	
+	// Convert old-style error middleware to new interface
+	errorMiddleware := ErrorHandlerMiddleware(GetErrorHandler())
+	convertedErrorMiddleware := func(c httpInternal.Context) error {
+		return errorMiddleware(c.(*contextImpl.Context))
+	}
+	app.router.Use(convertedErrorMiddleware)
 	
 	return app
 }
@@ -482,7 +505,9 @@ func RecoveryMiddleware() httpInternal.MiddlewareFunc {
 				httpErr := NewHTTPErrorWithContext(500, "Internal Server Error", panicContext)
 				httpErr.Internal = panicErr
 				
-				GetErrorHandler().Handle(c, httpErr)
+				// Use a temporary HTTP error handler adapter for interface conversion
+				adapter := &HTTPErrorHandlerAdapter{handler: GetErrorHandler()}
+				adapter.Handle(c, httpErr)
 				c.Abort()
 			}
 		}()

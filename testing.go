@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	
+	"github.com/onyx-go/framework/internal/auth"
 	"strings"
 	"testing"
 )
@@ -73,7 +75,7 @@ func (tc *TestCase) WithSession(data map[string]interface{}) *TestCase {
 	return tc
 }
 
-func (tc *TestCase) ActingAs(user User) *TestCase {
+func (tc *TestCase) ActingAs(user auth.User) *TestCase {
 	return tc
 }
 

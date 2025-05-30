@@ -142,7 +142,7 @@ func (dm *DocsMiddleware) SetVersionedDocumentation(versionedDocs *VersionedDocu
 
 // Middleware returns the middleware function
 func (dm *DocsMiddleware) Middleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		if !dm.enabled {
 			return c.Next()
 		}
