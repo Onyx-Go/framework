@@ -40,6 +40,7 @@ type Context interface {
 	// Request body methods
 	Bind(obj interface{}) error
 	Body() ([]byte, error)
+	PostForm(key string) string
 	
 	// Response writer access
 	ResponseWriter() http.ResponseWriter

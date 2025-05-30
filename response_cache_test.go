@@ -1,4 +1,5 @@
 package onyx
+import "fmt"
 
 import (
 	"net/http/httptest"
@@ -38,23 +39,23 @@ func TestNewResponseCache(t *testing.T) {
 func TestResponseCacheMiddleware_CacheHit(t *testing.T) {
 	app := New()
 	
-	app.Use(ResponseCacheMiddleware())
+	app.UseMiddleware(ResponseCacheMiddleware())
 	
 	callCount := 0
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		callCount++
-		return c.String(200, "Test %d", callCount)
+		return c.String(200, fmt.Sprintf("Test %d", callCount))
 	})
 	
 	// First request
 	req1 := httptest.NewRequest("GET", "/test", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	
 	// Second request (should be cached)
 	req2 := httptest.NewRequest("GET", "/test", nil)
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	
 	// Handler should be called only once (second request cached)
 	if callCount != 1 {
@@ -77,23 +78,23 @@ func TestResponseCacheMiddleware_ExcludedPath(t *testing.T) {
 	
 	config := DefaultResponseCacheConfig()
 	config.ExcludedPaths = []string{"/admin/"}
-	app.Use(ResponseCacheMiddleware(config))
+	app.UseMiddleware(ResponseCacheMiddleware(config))
 	
 	callCount := 0
-	app.Get("/admin/dashboard", func(c *Context) error {
+	app.GetHandler("/admin/dashboard", func(c Context) error {
 		callCount++
-		return c.String(200, "Admin %d", callCount)
+		return c.String(200, fmt.Sprintf("Admin %d", callCount))
 	})
 	
 	// First request
 	req1 := httptest.NewRequest("GET", "/admin/dashboard", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	
 	// Second request
 	req2 := httptest.NewRequest("GET", "/admin/dashboard", nil)
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	
 	// Handler should be called twice (no caching for excluded paths)
 	if callCount != 2 {
@@ -106,23 +107,23 @@ func TestResponseCacheMiddleware_MethodFiltering(t *testing.T) {
 	
 	config := DefaultResponseCacheConfig()
 	config.IncludedMethods = []string{"GET"} // Only cache GET requests
-	app.Use(ResponseCacheMiddleware(config))
+	app.UseMiddleware(ResponseCacheMiddleware(config))
 	
 	callCount := 0
-	app.Post("/data", func(c *Context) error {
+	app.PostHandler("/data", func(c Context) error {
 		callCount++
-		return c.String(200, "POST %d", callCount)
+		return c.String(200, fmt.Sprintf("POST %d", callCount))
 	})
 	
 	// First POST request
 	req1 := httptest.NewRequest("POST", "/data", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	
 	// Second POST request
 	req2 := httptest.NewRequest("POST", "/data", nil)
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	
 	// Handler should be called twice (POST not cached)
 	if callCount != 2 {
@@ -133,23 +134,23 @@ func TestResponseCacheMiddleware_MethodFiltering(t *testing.T) {
 func TestResponseCacheMiddleware_ErrorResponse(t *testing.T) {
 	app := New()
 	
-	app.Use(ResponseCacheMiddleware())
+	app.UseMiddleware(ResponseCacheMiddleware())
 	
 	callCount := 0
-	app.Get("/error", func(c *Context) error {
+	app.GetHandler("/error", func(c Context) error {
 		callCount++
-		return c.String(500, "Error %d", callCount)
+		return c.String(500, fmt.Sprintf("Error %d", callCount))
 	})
 	
 	// First request (error response)
 	req1 := httptest.NewRequest("GET", "/error", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	
 	// Second request
 	req2 := httptest.NewRequest("GET", "/error", nil)
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	
 	// Handler should be called twice (error responses not cached)
 	if callCount != 2 {
@@ -162,23 +163,23 @@ func TestResponseCacheMiddleware_DisabledCache(t *testing.T) {
 	
 	config := DefaultResponseCacheConfig()
 	config.Enabled = false
-	app.Use(ResponseCacheMiddleware(config))
+	app.UseMiddleware(ResponseCacheMiddleware(config))
 	
 	callCount := 0
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		callCount++
-		return c.String(200, "Test %d", callCount)
+		return c.String(200, fmt.Sprintf("Test %d", callCount))
 	})
 	
 	// First request
 	req1 := httptest.NewRequest("GET", "/test", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	
 	// Second request
 	req2 := httptest.NewRequest("GET", "/test", nil)
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	
 	// Handler should be called twice (caching disabled)
 	if callCount != 2 {

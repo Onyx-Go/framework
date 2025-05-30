@@ -219,9 +219,9 @@ func TestCSRFManager(t *testing.T) {
 
 func TestTrimStringsMiddleware(t *testing.T) {
 	app := New()
-	app.Use(TrimStringsMiddleware())
+	app.UseMiddleware(TrimStringsMiddleware())
 
-	app.Post("/test", func(c *Context) error {
+	app.PostHandler("/test", func(c Context) error {
 		name := c.PostForm("name")
 		return c.JSON(http.StatusOK, map[string]string{"name": name})
 	})
@@ -234,7 +234,7 @@ func TestTrimStringsMiddleware(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	recorder := httptest.NewRecorder()
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -249,16 +249,16 @@ func TestTrimStringsMiddleware(t *testing.T) {
 
 func TestXSSProtectionMiddleware(t *testing.T) {
 	app := New()
-	app.Use(XSSProtectionMiddleware())
+	app.UseMiddleware(XSSProtectionMiddleware())
 
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "ok"})
 	})
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	recorder := httptest.NewRecorder()
 
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -282,16 +282,16 @@ func TestXSSProtectionMiddleware(t *testing.T) {
 
 func TestSecurityHeadersMiddleware(t *testing.T) {
 	app := New()
-	app.Use(SecurityHeadersMiddleware())
+	app.UseMiddleware(SecurityHeadersMiddleware())
 
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "ok"})
 	})
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	recorder := httptest.NewRecorder()
 
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -327,7 +327,7 @@ func TestCORSMiddleware(t *testing.T) {
 	app := New()
 	app.Use(CORSMiddleware())
 
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "ok"})
 	})
 
@@ -336,7 +336,7 @@ func TestCORSMiddleware(t *testing.T) {
 	req.Header.Set("Origin", "https://example.com")
 	recorder := httptest.NewRecorder()
 
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNoContent {
 		t.Errorf("Expected status 204 for preflight, got %d", recorder.Code)
@@ -352,7 +352,7 @@ func TestCORSMiddleware(t *testing.T) {
 	req.Header.Set("Origin", "https://example.com")
 	recorder = httptest.NewRecorder()
 
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -365,9 +365,9 @@ func TestCORSMiddleware(t *testing.T) {
 
 func TestSQLInjectionProtectionMiddleware(t *testing.T) {
 	app := New()
-	app.Use(SQLInjectionProtectionMiddleware())
+	app.UseMiddleware(SQLInjectionProtectionMiddleware())
 
-	app.Post("/test", func(c *Context) error {
+	app.PostHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "ok"})
 	})
 
@@ -379,7 +379,7 @@ func TestSQLInjectionProtectionMiddleware(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	recorder := httptest.NewRecorder()
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Errorf("Expected status 400 for SQL injection attempt, got %d", recorder.Code)
@@ -393,7 +393,7 @@ func TestSQLInjectionProtectionMiddleware(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	recorder = httptest.NewRecorder()
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200 for legitimate request, got %d", recorder.Code)
@@ -407,9 +407,9 @@ func TestInputSanitizationMiddleware(t *testing.T) {
 	SetSecurityConfig(config)
 
 	app := New()
-	app.Use(InputSanitizationMiddleware())
+	app.UseMiddleware(InputSanitizationMiddleware())
 
-	app.Post("/test", func(c *Context) error {
+	app.PostHandler("/test", func(c Context) error {
 		content := c.PostForm("content")
 		return c.JSON(http.StatusOK, map[string]string{"content": content})
 	})
@@ -422,7 +422,7 @@ func TestInputSanitizationMiddleware(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	recorder := httptest.NewRecorder()
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -446,17 +446,17 @@ func TestSecurityMiddlewareGroup(t *testing.T) {
 	
 	// Apply security middleware group
 	for _, middleware := range SecurityMiddlewareGroup() {
-		app.Use(middleware)
+		app.UseMiddleware(middleware)
 	}
 
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "ok"})
 	})
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	recorder := httptest.NewRecorder()
 
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)
@@ -484,7 +484,7 @@ func TestSecurityMiddlewareGroup(t *testing.T) {
 func TestContextFormHandling(t *testing.T) {
 	app := New()
 
-	app.Post("/test", func(c *Context) error {
+	app.PostHandler("/test", func(c Context) error {
 		name := c.PostForm("name")
 		email := c.PostForm("email")
 		
@@ -509,7 +509,7 @@ func TestContextFormHandling(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	recorder := httptest.NewRecorder()
-	app.ServeHTTP(recorder, req)
+	app.Router().ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", recorder.Code)

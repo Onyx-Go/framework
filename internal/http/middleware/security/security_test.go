@@ -196,6 +196,26 @@ func (m *mockContext) RemoteIP() string {
 	return "192.168.1.1"
 }
 
+func (m *mockContext) UserAgent() string {
+	return m.request.UserAgent()
+}
+
+func (m *mockContext) SetCSRFToken() error {
+	return nil
+}
+
+func (m *mockContext) ValidateCSRF() bool {
+	return true
+}
+
+func (m *mockContext) SetCookie(cookie *http.Cookie) {
+	// Mock implementation
+}
+
+func (m *mockContext) Cookie(name string) (*http.Cookie, error) {
+	return m.request.Cookie(name)
+}
+
 // Test functions
 
 func TestTrimStringsMiddleware(t *testing.T) {

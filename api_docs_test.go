@@ -57,15 +57,15 @@ func TestOpenAPIBuilder(t *testing.T) {
 		router := NewRouter()
 		
 		// Add some routes
-		router.Get("/users", func(c *Context) error {
+		router.Get("/users", func(c Context) error {
 			return c.JSON(200, map[string]string{"message": "Users"})
 		})
 		
-		router.Post("/users", func(c *Context) error {
+		router.Post("/users", func(c Context) error {
 			return c.JSON(201, map[string]string{"message": "User created"})
 		})
 		
-		router.Get("/users/{id:int}", func(c *Context) error {
+		router.Get("/users/{id:int}", func(c Context) error {
 			return c.JSON(200, map[string]string{"message": "User details"})
 		})
 		
@@ -494,11 +494,11 @@ func TestDocumentationMiddleware(t *testing.T) {
 	t.Run("should discover routes", func(t *testing.T) {
 		router := NewRouter()
 		
-		router.Get("/users", func(c *Context) error {
+		router.Get("/users", func(c Context) error {
 			return c.JSON(200, "users")
 		})
 		
-		router.Post("/users", func(c *Context) error {
+		router.Post("/users", func(c Context) error {
 			return c.JSON(201, "created")
 		})
 		
@@ -759,10 +759,10 @@ func BenchmarkOpenAPIGeneration(b *testing.B) {
 	// Add many routes to test performance
 	for i := 0; i < 100; i++ {
 		path := fmt.Sprintf("/api/v1/resource%d", i)
-		router.Get(path, func(c *Context) error {
+		router.Get(path, func(c Context) error {
 			return c.JSON(200, "ok")
 		})
-		router.Post(path, func(c *Context) error {
+		router.Post(path, func(c Context) error {
 			return c.JSON(201, "created")
 		})
 	}

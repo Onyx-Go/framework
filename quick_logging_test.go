@@ -21,8 +21,8 @@ func TestQuickLoggingFunctionality(t *testing.T) {
 	globalLogManager.SetDefaultChannel("test")
 	
 	// Add test route
-	app.Get("/test", func(c *Context) error {
-		c.Log().Info("Test route hit")
+	app.GetHandler("/test", func(c Context) error {
+		Log().Info("Test route hit")
 		return c.String(200, "OK")
 	})
 	
@@ -30,7 +30,7 @@ func TestQuickLoggingFunctionality(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Check response
 	if w.Code != 200 {

@@ -21,16 +21,16 @@ func TestApplicationLogging(t *testing.T) {
 	globalLogManager.SetDefaultChannel("json")
 	
 	// Add test route
-	app.Get("/test", func(c *Context) error {
-		c.Log().Info("Test route accessed", map[string]interface{}{
+	app.GetHandler("/test", func(c Context) error {
+		Log().Info("Test route accessed", map[string]interface{}{
 			"custom_data": "test_value",
 		})
 		return c.String(200, "OK")
 	})
 	
 	// Add route that causes an error
-	app.Get("/error", func(c *Context) error {
-		c.Log().Error("Simulated error", map[string]interface{}{
+	app.GetHandler("/error", func(c Context) error {
+		Log().Error("Simulated error", map[string]interface{}{
 			"error_type": "test_error",
 		})
 		return c.String(500, "Internal Server Error")
@@ -41,7 +41,7 @@ func TestApplicationLogging(t *testing.T) {
 	req.Header.Set("User-Agent", "test-agent")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 200 {
 		t.Errorf("Expected status 200, got %d", w.Code)
@@ -64,7 +64,7 @@ func TestApplicationLogging(t *testing.T) {
 	req = httptest.NewRequest("GET", "/error", nil)
 	w = httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	logOutput = logBuffer.String()
 	if !strings.Contains(logOutput, "Simulated error") {
@@ -88,8 +88,8 @@ func TestContextLogging(t *testing.T) {
 	globalLogManager.SetDefaultChannel("test")
 	
 	// Add test route that uses context logging
-	app.Post("/user", func(c *Context) error {
-		logger := c.Log()
+	app.PostHandler("/user", func(c Context) error {
+		logger := Log()
 		logger.Info("User creation attempt", map[string]interface{}{
 			"action": "create_user",
 			"ip":     c.RemoteIP(),
@@ -103,7 +103,7 @@ func TestContextLogging(t *testing.T) {
 	req.RemoteAddr = "192.168.1.1:12345"
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Check logs contain request context
 	logOutput := logBuffer.String()
@@ -136,7 +136,7 @@ func TestRecoveryMiddlewareLogging(t *testing.T) {
 	globalLogManager.SetDefaultChannel("test")
 	
 	// Add route that panics
-	app.Get("/panic", func(c *Context) error {
+	app.GetHandler("/panic", func(c Context) error {
 		panic("Test panic")
 	})
 	
@@ -144,7 +144,7 @@ func TestRecoveryMiddlewareLogging(t *testing.T) {
 	req := httptest.NewRequest("GET", "/panic", nil)
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should return 500
 	if w.Code != 500 {

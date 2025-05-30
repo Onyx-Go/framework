@@ -43,18 +43,18 @@ func TestCompressionMiddleware_NoAcceptEncoding(t *testing.T) {
 	app := New()
 	
 	// Add compression middleware
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
 	// Add test route
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", strings.Repeat("Hello World! ", 100)) // > 1KB
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, strings.Repeat("Hello World! ", 100)) // > 1KB
 	})
 	
 	// Create request without Accept-Encoding
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should not be compressed
 	if w.Header().Get("Content-Encoding") == "gzip" {
@@ -70,13 +70,13 @@ func TestCompressionMiddleware_WithGzipAcceptEncoding(t *testing.T) {
 	app := New()
 	
 	// Add compression middleware
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
 	// Large response that should be compressed
 	largeContent := strings.Repeat("Hello World! This is a test of compression. ", 50) // > 1KB
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", largeContent)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, largeContent)
 	})
 	
 	// Create request with gzip Accept-Encoding
@@ -84,7 +84,7 @@ func TestCompressionMiddleware_WithGzipAcceptEncoding(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should be compressed
 	if w.Header().Get("Content-Encoding") != "gzip" {
@@ -126,20 +126,20 @@ func TestCompressionMiddleware_SmallResponse(t *testing.T) {
 		Types:     []string{"text/plain"},
 		Exclude:   []string{},
 	}
-	app.Use(CompressionMiddleware(config))
+	app.UseMiddleware(CompressionMiddleware(config))
 	
 	// Small response that should not be compressed due to high threshold
 	smallContent := "Hello World!"
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", smallContent)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, smallContent)
 	})
 	
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Note: Current implementation compresses all text/plain regardless of size
 	// This test demonstrates the compression behavior
@@ -159,20 +159,20 @@ func TestCompressionMiddleware_CustomConfig(t *testing.T) {
 		Exclude:   []string{"/health"},
 	}
 	
-	app.Use(CompressionMiddleware(config))
+	app.UseMiddleware(CompressionMiddleware(config))
 	
 	// Small response that should now be compressed due to low threshold
 	content := "Hello World! This is a test."
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", content)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, content)
 	})
 	
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should be compressed with custom config
 	if w.Header().Get("Content-Encoding") != "gzip" {
@@ -190,20 +190,20 @@ func TestCompressionMiddleware_ExcludedPath(t *testing.T) {
 		Exclude:   []string{"/health", "/metrics"},
 	}
 	
-	app.Use(CompressionMiddleware(config))
+	app.UseMiddleware(CompressionMiddleware(config))
 	
 	// Large content on excluded path
 	content := strings.Repeat("Health check data ", 100)
 	
-	app.Get("/health", func(c *Context) error {
-		return c.String(200, "%s", content)
+	app.GetHandler("/health", func(c Context) error {
+		return c.String(200, content)
 	})
 	
 	req := httptest.NewRequest("GET", "/health", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should not be compressed due to exclusion
 	if w.Header().Get("Content-Encoding") == "gzip" {
@@ -221,20 +221,20 @@ func TestCompressionMiddleware_UnsupportedContentType(t *testing.T) {
 		Exclude:   []string{},
 	}
 	
-	app.Use(CompressionMiddleware(config))
+	app.UseMiddleware(CompressionMiddleware(config))
 	
 	// Large plain text content (not in supported types)
 	content := strings.Repeat("Plain text data ", 100)
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", content) // Content-Type: text/plain
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, content) // Content-Type: text/plain
 	})
 	
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should not be compressed due to unsupported content type
 	if w.Header().Get("Content-Encoding") == "gzip" {
@@ -245,7 +245,7 @@ func TestCompressionMiddleware_UnsupportedContentType(t *testing.T) {
 func TestCompressionMiddleware_JSONResponse(t *testing.T) {
 	app := New()
 	
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
 	// Large JSON response
 	data := map[string]interface{}{
@@ -260,7 +260,7 @@ func TestCompressionMiddleware_JSONResponse(t *testing.T) {
 		}
 	}
 	
-	app.Get("/api/users", func(c *Context) error {
+	app.GetHandler("/api/users", func(c Context) error {
 		return c.JSON(200, data)
 	})
 	
@@ -268,7 +268,7 @@ func TestCompressionMiddleware_JSONResponse(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should be compressed
 	if w.Header().Get("Content-Encoding") != "gzip" {
@@ -283,17 +283,17 @@ func TestCompressionMiddleware_JSONResponse(t *testing.T) {
 func TestCompressionMiddleware_ErrorResponse(t *testing.T) {
 	app := New()
 	
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
-	app.Get("/error", func(c *Context) error {
-		return c.String(500, "%s", strings.Repeat("Error message ", 100))
+	app.GetHandler("/error", func(c Context) error {
+		return c.String(500, strings.Repeat("Error message ", 100))
 	})
 	
 	req := httptest.NewRequest("GET", "/error", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Error responses should not be compressed
 	if w.Header().Get("Content-Encoding") == "gzip" {
@@ -308,9 +308,9 @@ func TestCompressionMiddleware_ErrorResponse(t *testing.T) {
 func TestCompressionMiddleware_RedirectResponse(t *testing.T) {
 	app := New()
 	
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
-	app.Get("/redirect", func(c *Context) error {
+	app.GetHandler("/redirect", func(c Context) error {
 		return c.Redirect(302, "/somewhere")
 	})
 	
@@ -318,7 +318,7 @@ func TestCompressionMiddleware_RedirectResponse(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Redirect responses should not be compressed
 	if w.Header().Get("Content-Encoding") == "gzip" {
@@ -334,19 +334,19 @@ func TestGzipMiddleware_ConvenienceFunction(t *testing.T) {
 	app := New()
 	
 	// Test convenience function
-	app.Use(GzipMiddleware())
+	app.UseMiddleware(GzipMiddleware())
 	
 	content := strings.Repeat("Test content ", 100)
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", content)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, content)
 	})
 	
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should be compressed
 	if w.Header().Get("Content-Encoding") != "gzip" {
@@ -358,7 +358,7 @@ func TestCustomCompressionMiddleware(t *testing.T) {
 	app := New()
 	
 	// Test custom compression function
-	app.Use(CustomCompressionMiddleware(
+	app.UseMiddleware(CustomCompressionMiddleware(
 		gzip.BestSpeed,
 		100, // Very low threshold
 		[]string{"text/plain", "application/json"},
@@ -366,15 +366,15 @@ func TestCustomCompressionMiddleware(t *testing.T) {
 	
 	content := strings.Repeat("Custom test ", 20) // Should exceed 100 bytes
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", content)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, content)
 	})
 	
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	// Should be compressed
 	if w.Header().Get("Content-Encoding") != "gzip" {
@@ -385,26 +385,26 @@ func TestCustomCompressionMiddleware(t *testing.T) {
 func TestCompressionRatio(t *testing.T) {
 	app := New()
 	
-	app.Use(CompressionMiddleware())
+	app.UseMiddleware(CompressionMiddleware())
 	
 	// Highly compressible content
 	content := strings.Repeat("This is highly repetitive content that should compress very well. ", 50)
 	
-	app.Get("/test", func(c *Context) error {
-		return c.String(200, "%s", content)
+	app.GetHandler("/test", func(c Context) error {
+		return c.String(200, content)
 	})
 	
 	// Test uncompressed
 	req1 := httptest.NewRequest("GET", "/test", nil)
 	w1 := httptest.NewRecorder()
-	app.ServeHTTP(w1, req1)
+	app.Router().ServeHTTP(w1, req1)
 	uncompressedSize := len(w1.Body.Bytes())
 	
 	// Test compressed
 	req2 := httptest.NewRequest("GET", "/test", nil)
 	req2.Header.Set("Accept-Encoding", "gzip")
 	w2 := httptest.NewRecorder()
-	app.ServeHTTP(w2, req2)
+	app.Router().ServeHTTP(w2, req2)
 	compressedSize := len(w2.Body.Bytes())
 	
 	// Compressed should be significantly smaller

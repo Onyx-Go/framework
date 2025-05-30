@@ -130,10 +130,8 @@ func TestRateLimitKeyGenerators(t *testing.T) {
 	// Mock context for testing
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.RemoteAddr = "192.168.1.1:8080"
-	c := &Context{
-		Request: req,
-		data:    make(map[string]interface{}),
-	}
+	w := httptest.NewRecorder()
+	c := NewContext(w, req, nil)
 	
 	// Test IP key generator
 	ipKey := IPKeyGenerator(c)
@@ -213,14 +211,14 @@ func TestRateLimitMiddleware(t *testing.T) {
 	app := New()
 	
 	// Add rate limiting middleware
-	app.Use(RateLimit(3, time.Second))
+	app.UseMiddleware(RateLimit(3, time.Second))
 	
 	// Add test route
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 	})
 	
-	server := httptest.NewServer(app)
+	server := httptest.NewServer(app.Router())
 	defer server.Close()
 	
 	client := &http.Client{}
@@ -273,7 +271,7 @@ func TestRateLimitPerUser(t *testing.T) {
 	app := New()
 	
 	// Middleware to set user ID
-	app.Use(func(c *Context) error {
+	app.UseMiddleware(func(c Context) error {
 		userID := c.Query("user_id")
 		if userID != "" {
 			c.Set("user_id", userID)
@@ -283,13 +281,13 @@ func TestRateLimitPerUser(t *testing.T) {
 	})
 	
 	// Add per-user rate limiting
-	app.Use(RateLimitPerUser(2, time.Second))
+	app.UseMiddleware(RateLimitPerUser(2, time.Second))
 	
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 	})
 	
-	server := httptest.NewServer(app)
+	server := httptest.NewServer(app.Router())
 	defer server.Close()
 	
 	client := &http.Client{}
@@ -339,13 +337,13 @@ func TestCustomRateLimit(t *testing.T) {
 	}
 	
 	app := New()
-	app.Use(CustomRateLimit(config))
+	app.UseMiddleware(CustomRateLimit(config))
 	
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 	})
 	
-	server := httptest.NewServer(app)
+	server := httptest.NewServer(app.Router())
 	defer server.Close()
 	
 	client := &http.Client{}
@@ -386,7 +384,7 @@ func TestRateLimitWithSkipFunc(t *testing.T) {
 			KeyGenerator: IPKeyGenerator,
 			Headers:      true,
 		},
-		SkipFunc: func(c *Context) bool {
+		SkipFunc: func(c Context) bool {
 			// Skip rate limiting for admin users
 			return c.Query("admin") == "true"
 		},
@@ -395,13 +393,13 @@ func TestRateLimitWithSkipFunc(t *testing.T) {
 	manager.RegisterConfig("skip_test", config)
 	
 	app := New()
-	app.Use(manager.CreateMiddleware("skip_test"))
+	app.UseMiddleware(manager.CreateMiddleware("skip_test"))
 	
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 	})
 	
-	server := httptest.NewServer(app)
+	server := httptest.NewServer(app.Router())
 	defer server.Close()
 	
 	client := &http.Client{}
@@ -440,13 +438,13 @@ func TestRateLimitWithSkipFunc(t *testing.T) {
 
 func TestRateLimitHeaders(t *testing.T) {
 	app := New()
-	app.Use(RateLimit(3, time.Minute))
+	app.UseMiddleware(RateLimit(3, time.Minute))
 	
-	app.Get("/test", func(c *Context) error {
+	app.GetHandler("/test", func(c Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 	})
 	
-	server := httptest.NewServer(app)
+	server := httptest.NewServer(app.Router())
 	defer server.Close()
 	
 	client := &http.Client{}
