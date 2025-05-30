@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -314,9 +316,13 @@ func (app *Application) Use(middleware ...httpInternal.MiddlewareFunc) {
 // UseMiddleware accepts old-style middleware for backward compatibility
 func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
 	// Check if this is compression middleware and handle it specially
-	if isCompressionMiddleware(middleware) {
-		// Use new-style compression middleware instead
-		app.router.Use(NewStyleCompressionMiddleware())
+	if config, isCompression := extractCompressionConfig(middleware); isCompression {
+		// Use new-style compression middleware with extracted config
+		if config != nil {
+			app.router.Use(NewStyleCompressionMiddleware(*config))
+		} else {
+			app.router.Use(NewStyleCompressionMiddleware())
+		}
 		return
 	}
 	
@@ -327,10 +333,89 @@ func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
 	app.router.Use(converted)
 }
 
+// extractCompressionConfig attempts to extract config from compression middleware
+func extractCompressionConfig(middleware MiddlewareFunc) (*CompressionConfig, bool) {
+	// Use reflection to check the function name
+	funcValue := reflect.ValueOf(middleware)
+	
+	// Get function info for debugging
+	if funcValue.Kind() == reflect.Func {
+		funcPtr := funcValue.Pointer()
+		funcInfo := runtime.FuncForPC(funcPtr)
+		if funcInfo != nil {
+			funcName := funcInfo.Name()
+			// Check if it's one of our compression middleware functions
+			if strings.Contains(funcName, "CompressionMiddleware") || 
+			   strings.Contains(funcName, "GzipMiddleware") ||
+			   strings.Contains(funcName, "CustomCompressionMiddleware") {
+				// Try to extract the config by calling the middleware with a test context
+				config := tryExtractConfig(middleware)
+				return config, true
+			}
+		}
+	}
+	
+	return nil, false
+}
+
+// tryExtractConfig attempts to extract compression config from the registry
+func tryExtractConfig(middleware MiddlewareFunc) *CompressionConfig {
+	// Get the function pointer and look it up in the registry
+	funcPtr := reflect.ValueOf(middleware).Pointer()
+	
+	compressionConfigMutex.RLock()
+	config, exists := compressionConfigs[funcPtr]
+	compressionConfigMutex.RUnlock()
+	
+	if exists {
+		return &config
+	}
+	return nil
+}
+
+// configExtractorWriter is a special ResponseWriter that extracts compression config
+type configExtractorWriter struct {
+	headers         http.Header
+	extractedConfig *CompressionConfig
+}
+
+func (w *configExtractorWriter) Header() http.Header {
+	if w.headers == nil {
+		w.headers = make(http.Header)
+	}
+	return w.headers
+}
+
+func (w *configExtractorWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (w *configExtractorWriter) WriteHeader(int) {}
+
 // isCompressionMiddleware detects if middleware is compression-related
 func isCompressionMiddleware(middleware MiddlewareFunc) bool {
-	// Test the middleware with a dummy context to see if it's compression-related
-	// This is a heuristic approach
+	// Use reflection to check the function name or type
+	funcValue := reflect.ValueOf(middleware)
+	_ = funcValue.Type() // Unused variable
+	
+	// Get function info for debugging
+	if funcValue.Kind() == reflect.Func {
+		funcPtr := funcValue.Pointer()
+		funcInfo := runtime.FuncForPC(funcPtr)
+		if funcInfo != nil {
+			funcName := funcInfo.Name()
+			println("DEBUG: Checking middleware function:", funcName)
+			// Check if it's one of our compression middleware functions
+			if strings.Contains(funcName, "CompressionMiddleware") || 
+			   strings.Contains(funcName, "GzipMiddleware") ||
+			   strings.Contains(funcName, "CustomCompressionMiddleware") {
+				println("DEBUG: isCompressionMiddleware result: true (by name)")
+				return true
+			}
+		}
+	}
+	
+	// Fallback: Test the middleware with a dummy context
 	dummyWriter := &testResponseWriter{}
 	dummyRequest := &http.Request{
 		Header: make(http.Header),
@@ -340,12 +425,15 @@ func isCompressionMiddleware(middleware MiddlewareFunc) bool {
 	
 	dummyContext := NewContext(dummyWriter, dummyRequest, nil)
 	
+	// Add a large response that would trigger compression
+	dummyContext.String(200, strings.Repeat("test content ", 100))
+	
 	// Call the middleware and check if it modifies compression-related headers
 	middleware(dummyContext)
 	
 	// Check if compression headers were set
 	isCompression := dummyWriter.hasCompressionHeaders()
-	println("DEBUG: isCompressionMiddleware result:", isCompression)
+	println("DEBUG: isCompressionMiddleware result:", isCompression, "(by test)")
 	return isCompression
 }
 

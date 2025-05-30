@@ -146,10 +146,9 @@ func TestCompressionMiddleware_SmallResponse(t *testing.T) {
 	
 	app.Router().ServeHTTP(w, req)
 	
-	// Note: Current implementation compresses all text/plain regardless of size
-	// This test demonstrates the compression behavior
-	if w.Header().Get("Content-Encoding") != "gzip" {
-		t.Error("Text response should be compressed with current implementation")
+	// Small response should NOT be compressed due to high threshold
+	if w.Header().Get("Content-Encoding") == "gzip" {
+		t.Error("Small response should not be compressed with high threshold")
 	}
 }
 
