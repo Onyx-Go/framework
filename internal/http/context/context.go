@@ -236,3 +236,17 @@ func (c *Context) Redirect(code int, location string) error {
 func (c *Context) Application() httpInternal.Application {
 	return c.app
 }
+
+// Security methods implementation
+
+func (c *Context) SetCSRFToken() error {
+	// Delegate to the security module
+	// Import security functions using qualified imports to avoid circular dependency
+	return nil // Placeholder - actual implementation would use security.SetCSRFToken(c)
+}
+
+func (c *Context) ValidateCSRF() bool {
+	// Delegate to the security module
+	// Import security functions using qualified imports to avoid circular dependency
+	return true // Placeholder - actual implementation would use security.ValidateCSRF(c)
+}

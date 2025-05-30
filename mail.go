@@ -761,14 +761,9 @@ func SendMail(mailable Mailable, driverName ...string) error {
 	return Mail().Send(mailable, driverName...)
 }
 
-// Context helper
-func (c *Context) Mail() *MailManager {
-	if c.app != nil && c.app.Container() != nil {
-		if mail, err := c.app.Container().Make("mail"); err == nil {
-			if m, ok := mail.(*MailManager); ok {
-				return m
-			}
-		}
-	}
+// Context helper function for getting mail manager
+func GetMailFromContext(c Context) *MailManager {
+	// For now, use the global mail manager since Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container
 	return Mail()
 }

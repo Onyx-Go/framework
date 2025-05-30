@@ -47,12 +47,12 @@ func (ve *ValidationErrors) Error() string {
 
 // ErrorReporter interface for custom error reporting
 type ErrorReporter interface {
-	Report(error, *Context) error
+	Report(error, Context) error
 }
 
 // ErrorRenderer interface for custom error rendering
 type ErrorRenderer interface {
-	Render(*Context, error) error
+	Render(Context, error) error
 }
 
 // ErrorHandler manages centralized error handling
@@ -89,7 +89,7 @@ func (eh *ErrorHandler) SetTemplate(statusCode int, template string) {
 }
 
 // Handle processes an error and renders appropriate response
-func (eh *ErrorHandler) Handle(c *Context, err error) {
+func (eh *ErrorHandler) Handle(c Context, err error) {
 	if err == nil {
 		return
 	}
@@ -105,7 +105,7 @@ func (eh *ErrorHandler) Handle(c *Context, err error) {
 	}
 
 	// Determine response format based on Accept header
-	acceptHeader := c.GetHeader("Accept")
+	acceptHeader := c.Header("Accept")
 	contentType := eh.determineContentType(acceptHeader)
 
 	// Try custom renderer first
@@ -134,7 +134,7 @@ func (eh *ErrorHandler) determineContentType(acceptHeader string) string {
 	return "text/html" // Default
 }
 
-func (eh *ErrorHandler) renderDefault(c *Context, err error) {
+func (eh *ErrorHandler) renderDefault(c Context, err error) {
 	var statusCode int
 	var message string
 	var context map[string]interface{}
@@ -160,7 +160,7 @@ func (eh *ErrorHandler) renderDefault(c *Context, err error) {
 	}
 
 	// Determine response format
-	acceptHeader := c.GetHeader("Accept")
+	acceptHeader := c.Header("Accept")
 
 	if strings.Contains(acceptHeader, "application/json") {
 		eh.renderJSON(c, statusCode, message, context, err)
@@ -169,7 +169,7 @@ func (eh *ErrorHandler) renderDefault(c *Context, err error) {
 	}
 }
 
-func (eh *ErrorHandler) renderJSON(c *Context, statusCode int, message string, context map[string]interface{}, originalErr error) {
+func (eh *ErrorHandler) renderJSON(c Context, statusCode int, message string, context map[string]interface{}, originalErr error) {
 	response := map[string]interface{}{
 		"error": map[string]interface{}{
 			"message":     message,
@@ -191,15 +191,15 @@ func (eh *ErrorHandler) renderJSON(c *Context, statusCode int, message string, c
 		response["debug"] = debugInfo
 	}
 
-	c.ResponseWriter.Header().Set("Content-Type", "application/json")
-	c.ResponseWriter.WriteHeader(statusCode)
-	json.NewEncoder(c.ResponseWriter).Encode(response)
+	c.ResponseWriter().Header().Set("Content-Type", "application/json")
+	c.ResponseWriter().WriteHeader(statusCode)
+	json.NewEncoder(c.ResponseWriter()).Encode(response)
 }
 
-func (eh *ErrorHandler) renderHTML(c *Context, statusCode int, message string, context map[string]interface{}, originalErr error) {
+func (eh *ErrorHandler) renderHTML(c Context, statusCode int, message string, context map[string]interface{}, originalErr error) {
 	// Try to use custom template if available
 	if template, exists := eh.templates[statusCode]; exists {
-		if c.app.TemplateEngine() != nil {
+		if c.Application().TemplateEngine() != nil {
 			data := map[string]interface{}{
 				"status_code": statusCode,
 				"message":     message,
@@ -210,10 +210,10 @@ func (eh *ErrorHandler) renderHTML(c *Context, statusCode int, message string, c
 				data["debug"] = eh.getDebugInfo(originalErr)
 			}
 
-			if rendered, err := c.app.TemplateEngine().Render(template, ViewData(data)); err == nil {
-				c.ResponseWriter.Header().Set("Content-Type", "text/html")
-				c.ResponseWriter.WriteHeader(statusCode)
-				c.ResponseWriter.Write([]byte(rendered))
+			if rendered, err := c.Application().TemplateEngine().Render(template, ViewData(data)); err == nil {
+				c.ResponseWriter().Header().Set("Content-Type", "text/html")
+				c.ResponseWriter().WriteHeader(statusCode)
+				c.ResponseWriter().Write([]byte(rendered))
 				return
 			}
 		}
@@ -221,9 +221,9 @@ func (eh *ErrorHandler) renderHTML(c *Context, statusCode int, message string, c
 
 	// Fall back to simple HTML response
 	html := eh.generateDefaultHTML(statusCode, message, context, originalErr)
-	c.ResponseWriter.Header().Set("Content-Type", "text/html")
-	c.ResponseWriter.WriteHeader(statusCode)
-	c.ResponseWriter.Write([]byte(html))
+	c.ResponseWriter().Header().Set("Content-Type", "text/html")
+	c.ResponseWriter().WriteHeader(statusCode)
+	c.ResponseWriter().Write([]byte(html))
 }
 
 func (eh *ErrorHandler) generateDefaultHTML(statusCode int, message string, context map[string]interface{}, originalErr error) string {
@@ -313,12 +313,12 @@ func (eh *ErrorHandler) getDebugInfo(err error) map[string]interface{} {
 // Built-in error reporters
 type LogErrorReporter struct{}
 
-func (ler *LogErrorReporter) Report(err error, c *Context) error {
+func (ler *LogErrorReporter) Report(err error, c Context) error {
 	errorContext := map[string]interface{}{
 		"error":      err.Error(),
 		"method":     c.Method(),
 		"url":        c.URL(),
-		"user_agent": c.UserAgent(),
+		"user_agent": c.Header("User-Agent"),
 		"remote_ip":  c.RemoteIP(),
 		"timestamp":  time.Now().Format(time.RFC3339),
 	}
@@ -422,7 +422,7 @@ func NewValidationErrors(errors ...ValidationError) *ValidationErrors {
 
 // Error handling middleware
 func ErrorHandlerMiddleware(handler *ErrorHandler) MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		err := c.Next()
 		if err != nil {
 			// Always use the current global handler to support runtime debug changes
@@ -452,8 +452,8 @@ func GetErrorHandler() *ErrorHandler {
 	return globalErrorHandler
 }
 
-// Context helper methods for error handling
-func (c *Context) Error(err error) error {
+// Context helper functions for error handling (converted from methods to functions)
+func HandleError(c Context, err error) error {
 	if globalErrorHandler != nil {
 		globalErrorHandler.Handle(c, err)
 		c.Abort()
@@ -462,44 +462,44 @@ func (c *Context) Error(err error) error {
 	return err
 }
 
-func (c *Context) BadRequest(message string) error {
-	return c.Error(BadRequest(message))
+func HandleBadRequest(c Context, message string) error {
+	return HandleError(c, BadRequest(message))
 }
 
-func (c *Context) Unauthorized(message string) error {
-	return c.Error(Unauthorized(message))
+func HandleUnauthorized(c Context, message string) error {
+	return HandleError(c, Unauthorized(message))
 }
 
-func (c *Context) Forbidden(message string) error {
-	return c.Error(Forbidden(message))
+func HandleForbidden(c Context, message string) error {
+	return HandleError(c, Forbidden(message))
 }
 
-func (c *Context) NotFound(message string) error {
-	return c.Error(NotFound(message))
+func HandleNotFound(c Context, message string) error {
+	return HandleError(c, NotFound(message))
 }
 
-func (c *Context) UnprocessableEntity(message string) error {
-	return c.Error(UnprocessableEntity(message))
+func HandleUnprocessableEntity(c Context, message string) error {
+	return HandleError(c, UnprocessableEntity(message))
 }
 
-func (c *Context) InternalServerError(message string) error {
-	return c.Error(InternalServerError(message))
+func HandleInternalServerError(c Context, message string) error {
+	return HandleError(c, InternalServerError(message))
 }
 
-func (c *Context) ValidationErrors(errors ...ValidationError) error {
-	return c.Error(NewValidationErrors(errors...))
+func HandleValidationErrors(c Context, errors ...ValidationError) error {
+	return HandleError(c, NewValidationErrors(errors...))
 }
 
 // AbortWithError aborts the request chain and handles the error
-func (c *Context) AbortWithError(err error) {
-	c.Error(err)
+func AbortWithError(c Context, err error) {
+	HandleError(c, err)
 }
 
 // AbortWithStatus aborts with a status code and default message
-func (c *Context) AbortWithStatus(code int) {
+func AbortWithStatus(c Context, code int) {
 	message := http.StatusText(code)
 	if message == "" {
 		message = "HTTP Error " + strconv.Itoa(code)
 	}
-	c.Error(NewHTTPError(code, message))
+	HandleError(c, NewHTTPError(code, message))
 }

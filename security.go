@@ -235,49 +235,43 @@ func (cm *CSRFManager) ValidateToken(token string, sessionToken string) bool {
 }
 
 // SetCSRFToken sets CSRF token in context
-func (c *Context) SetCSRFToken() error {
+func SetCSRFToken(c Context) error {
 	manager := NewCSRFManager(GetSecurityConfig())
 	token, err := manager.GenerateToken()
 	if err != nil {
 		return err
 	}
 	
-	c.Session().Put("csrf_token", token)
+	// Use context storage instead of session for now
+	// TODO: Implement session support with interface-based system
 	c.Set("csrf_token", token)
 	return nil
 }
 
-// GetCSRFToken gets CSRF token from context
-func (c *Context) GetCSRFToken() string {
-	if token := c.Get("csrf_token"); token != nil {
+// GetCSRFTokenFromSecurity gets CSRF token from context (security module)
+func GetCSRFTokenFromSecurity(c Context) string {
+	if token, exists := c.Get("csrf_token"); exists {
 		if str, ok := token.(string); ok {
 			return str
 		}
 	}
 	
-	if token := c.Session().Get("csrf_token"); token != nil {
-		if str, ok := token.(string); ok {
-			return str
-		}
-	}
-	
+	// TODO: Add session support when available
 	return ""
 }
 
 // ValidateCSRF validates CSRF token from request
-func (c *Context) ValidateCSRF() bool {
+func ValidateCSRF(c Context) bool {
 	manager := NewCSRFManager(GetSecurityConfig())
 	
-	// Get token from form, header, or query
-	token := c.PostForm("_token")
-	if token == "" {
-		token = c.GetHeader("X-CSRF-Token")
-	}
+	// Get token from header for now (form parsing needs additional work)
+	// TODO: Implement form parsing with interface-based system
+	token := c.Header("X-CSRF-Token")
 	if token == "" {
 		token = c.Query("_token")
 	}
 	
-	sessionToken := c.GetCSRFToken()
+	sessionToken := GetCSRFTokenFromSecurity(c)
 	return manager.ValidateToken(token, sessionToken)
 }
 

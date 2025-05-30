@@ -53,25 +53,25 @@ type RedisConfig struct {
 }
 
 // KeyGeneratorFunc generates rate limit keys based on the request
-type KeyGeneratorFunc func(c *Context) string
+type KeyGeneratorFunc func(c Context) string
 
 // RateLimitMiddlewareConfig contains middleware-specific configuration
 type RateLimitMiddlewareConfig struct {
 	Name         string              `json:"name"`
 	Config       *RateLimitConfig    `json:"config"`
 	OnExceeded   RateLimitHandler    `json:"-"`
-	SkipFunc     func(c *Context) bool `json:"-"`
-	ErrorHandler func(c *Context, err error) `json:"-"`
+	SkipFunc     func(c Context) bool `json:"-"`
+	ErrorHandler func(c Context, err error) `json:"-"`
 }
 
 // RateLimitHandler handles rate limit exceeded scenarios
-type RateLimitHandler func(c *Context, result *RateLimitResult)
+type RateLimitHandler func(c Context, result *RateLimitResult)
 
 // Default key generators
 
 // IPKeyGenerator generates keys based on client IP
-func IPKeyGenerator(c *Context) string {
-	ip := c.Request.RemoteAddr
+func IPKeyGenerator(c Context) string {
+	ip := c.Request().RemoteAddr
 	if colonIndex := strings.LastIndex(ip, ":"); colonIndex != -1 {
 		ip = ip[:colonIndex]
 	}
@@ -79,23 +79,23 @@ func IPKeyGenerator(c *Context) string {
 }
 
 // UserKeyGenerator generates keys based on authenticated user ID
-func UserKeyGenerator(c *Context) string {
+func UserKeyGenerator(c Context) string {
 	userID := "anonymous"
 	// In a real implementation, you'd extract user ID from context/auth
-	if authUser := c.Get("user_id"); authUser != nil {
+	if authUser, exists := c.Get("user_id"); exists && authUser != nil {
 		userID = fmt.Sprintf("%v", authUser)
 	}
 	return fmt.Sprintf("rate_limit:user:%s", userID)
 }
 
 // RouteKeyGenerator generates keys based on route pattern
-func RouteKeyGenerator(c *Context) string {
-	return fmt.Sprintf("rate_limit:route:%s:%s", c.Request.Method, c.Request.URL.Path)
+func RouteKeyGenerator(c Context) string {
+	return fmt.Sprintf("rate_limit:route:%s:%s", c.Request().Method, c.Request().URL.Path)
 }
 
 // CompositeKeyGenerator combines multiple key generators
 func CompositeKeyGenerator(generators ...KeyGeneratorFunc) KeyGeneratorFunc {
-	return func(c *Context) string {
+	return func(c Context) string {
 		var parts []string
 		for _, gen := range generators {
 			parts = append(parts, gen(c))
@@ -380,7 +380,7 @@ func (rlm *RateLimitManager) CreateMiddleware(configName string) MiddlewareFunc 
 	
 	if !exists {
 		// Return a middleware that always errors
-		return func(c *Context) error {
+		return func(c Context) error {
 			c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Rate limit configuration error",
 			})
@@ -397,7 +397,7 @@ func (rlm *RateLimitManager) CreateMiddleware(configName string) MiddlewareFunc 
 		limiter = NewMemoryRateLimiter("token_bucket") // Default fallback
 	}
 	
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Check if request should be skipped
 		if config.SkipFunc != nil && config.SkipFunc(c) {
 			c.Next()
@@ -413,7 +413,7 @@ func (rlm *RateLimitManager) CreateMiddleware(configName string) MiddlewareFunc 
 		}
 		
 		// Check rate limit
-		result, err := limiter.Allow(c.Request.Context(), key, config.Config.Limit, config.Config.Window)
+		result, err := limiter.Allow(c.Request().Context(), key, config.Config.Limit, config.Config.Window)
 		if err != nil {
 			if config.ErrorHandler != nil {
 				config.ErrorHandler(c, err)
@@ -427,17 +427,17 @@ func (rlm *RateLimitManager) CreateMiddleware(configName string) MiddlewareFunc 
 		
 		// Add rate limit headers if enabled
 		if config.Config.Headers {
-			c.Header("X-RateLimit-Limit", strconv.Itoa(result.Limit))
-			c.Header("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+			c.SetHeader("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+			c.SetHeader("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
 			if !result.ResetTime.IsZero() {
-				c.Header("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
+				c.SetHeader("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
 			}
 		}
 		
 		// Handle rate limit exceeded
 		if !result.Allowed {
 			if result.RetryAfter > 0 {
-				c.Header("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
+				c.SetHeader("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
 			}
 			
 			if config.OnExceeded != nil {
@@ -466,12 +466,12 @@ func RateLimit(limit int, window time.Duration) MiddlewareFunc {
 	// Create a single limiter instance for this middleware
 	limiter := NewMemoryRateLimiter("token_bucket")
 	
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Generate rate limit key
 		key := IPKeyGenerator(c)
 		
 		// Check rate limit
-		result, err := limiter.Allow(c.Request.Context(), key, limit, window)
+		result, err := limiter.Allow(c.Request().Context(), key, limit, window)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Rate limiting error",
@@ -480,16 +480,16 @@ func RateLimit(limit int, window time.Duration) MiddlewareFunc {
 		}
 		
 		// Add rate limit headers
-		c.Header("X-RateLimit-Limit", strconv.Itoa(result.Limit))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+		c.SetHeader("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+		c.SetHeader("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
 		if !result.ResetTime.IsZero() {
-			c.Header("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
+			c.SetHeader("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
 		}
 		
 		// Handle rate limit exceeded
 		if !result.Allowed {
 			if result.RetryAfter > 0 {
-				c.Header("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
+				c.SetHeader("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
 			}
 			
 			c.JSON(http.StatusTooManyRequests, map[string]interface{}{
@@ -512,12 +512,12 @@ func RateLimitPerUser(limit int, window time.Duration) MiddlewareFunc {
 	// Create a single limiter instance for this middleware
 	limiter := NewMemoryRateLimiter("sliding_window")
 	
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Generate rate limit key
 		key := UserKeyGenerator(c)
 		
 		// Check rate limit
-		result, err := limiter.Allow(c.Request.Context(), key, limit, window)
+		result, err := limiter.Allow(c.Request().Context(), key, limit, window)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Rate limiting error",
@@ -526,16 +526,16 @@ func RateLimitPerUser(limit int, window time.Duration) MiddlewareFunc {
 		}
 		
 		// Add rate limit headers
-		c.Header("X-RateLimit-Limit", strconv.Itoa(result.Limit))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+		c.SetHeader("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+		c.SetHeader("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
 		if !result.ResetTime.IsZero() {
-			c.Header("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
+			c.SetHeader("X-RateLimit-Reset", strconv.FormatInt(result.ResetTime.Unix(), 10))
 		}
 		
 		// Handle rate limit exceeded
 		if !result.Allowed {
 			if result.RetryAfter > 0 {
-				c.Header("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
+				c.SetHeader("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
 			}
 			
 			c.JSON(http.StatusTooManyRequests, map[string]interface{}{
@@ -622,14 +622,9 @@ func GetRateLimitManager() *RateLimitManager {
 	return globalRateLimitManager
 }
 
-// Context helper for rate limiting
-func (c *Context) RateLimit() *RateLimitManager {
-	if c.app != nil && c.app.Container() != nil {
-		if rl, err := c.app.Container().Make("rate_limit"); err == nil {
-			if r, ok := rl.(*RateLimitManager); ok {
-				return r
-			}
-		}
-	}
+// Context helper function for rate limiting
+func GetRateLimitFromContext(c Context) *RateLimitManager {
+	// Use global rate limit manager since Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container
 	return GetRateLimitManager()
 }

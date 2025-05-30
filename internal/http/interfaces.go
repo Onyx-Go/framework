@@ -21,6 +21,7 @@ type Context interface {
 	Param(key string) string
 	Header(key string) string
 	RemoteIP() string
+	UserAgent() string
 	
 	// Response methods
 	Status(code int)
@@ -43,6 +44,14 @@ type Context interface {
 	// Response writer access
 	ResponseWriter() http.ResponseWriter
 	Request() *http.Request
+	
+	// Security methods
+	SetCSRFToken() error
+	ValidateCSRF() bool
+	
+	// Cookie methods
+	SetCookie(cookie *http.Cookie)
+	Cookie(name string) (*http.Cookie, error)
 }
 
 // Router interface defines the contract for HTTP routers

@@ -116,7 +116,7 @@ func (tc *TestCase) makeRequest(method, path string, data interface{}, headers m
 	tc.request = req
 	tc.response = httptest.NewRecorder()
 
-	tc.app.ServeHTTP(tc.response, req)
+	tc.app.Router().ServeHTTP(tc.response, req)
 
 	return tc
 }

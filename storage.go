@@ -346,14 +346,14 @@ func (uf *UploadedFile) IsValid() bool {
 	return uf.Header != nil && uf.Size > 0
 }
 
-func (c *Context) File(key string) (*UploadedFile, error) {
-	if c.Request.MultipartForm == nil {
-		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+func GetFile(c Context, key string) (*UploadedFile, error) {
+	if c.Request().MultipartForm == nil {
+		if err := c.Request().ParseMultipartForm(32 << 20); err != nil {
 			return nil, err
 		}
 	}
 	
-	file, header, err := c.Request.FormFile(key)
+	file, header, err := c.Request().FormFile(key)
 	if err != nil {
 		return nil, err
 	}
@@ -362,17 +362,15 @@ func (c *Context) File(key string) (*UploadedFile, error) {
 	return NewUploadedFile(header), nil
 }
 
-func (c *Context) HasFile(key string) bool {
-	_, err := c.File(key)
+func HasFile(c Context, key string) bool {
+	_, err := GetFile(c, key)
 	return err == nil
 }
 
-func (c *Context) Storage(disk ...string) Storage {
-	storageManager, _ := c.app.Container().Make("storage")
-	if sm, ok := storageManager.(*StorageManager); ok {
-		return sm.Disk(disk...)
-	}
-	return NewLocalStorage("storage/app")
+func GetStorage(c Context, disk ...string) Storage {
+	// Use global storage since Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container/StorageManager
+	return GetGlobalStorageManager().Disk(disk...)
 }
 
 type FileUploadMiddleware struct {
@@ -388,28 +386,28 @@ func NewFileUploadMiddleware() *FileUploadMiddleware {
 	}
 }
 
-func (fum *FileUploadMiddleware) Handle(c *Context) error {
-	if c.Request.Method != "POST" && c.Request.Method != "PUT" && c.Request.Method != "PATCH" {
+func (fum *FileUploadMiddleware) Handle(c Context) error {
+	if c.Request().Method != "POST" && c.Request().Method != "PUT" && c.Request().Method != "PATCH" {
 		return c.Next()
 	}
 	
-	if err := c.Request.ParseMultipartForm(fum.MaxFileSize); err != nil {
+	if err := c.Request().ParseMultipartForm(fum.MaxFileSize); err != nil {
 		return c.JSON(400, map[string]string{
 			"error": "Failed to parse multipart form",
 		})
 	}
 	
 	for _, requiredFile := range fum.RequiredFiles {
-		if !c.HasFile(requiredFile) {
+		if !HasFile(c, requiredFile) {
 			return c.JSON(400, map[string]string{
 				"error": fmt.Sprintf("Required file '%s' is missing", requiredFile),
 			})
 		}
 	}
 	
-	if c.Request.MultipartForm != nil {
-		for fieldName := range c.Request.MultipartForm.File {
-			uploadedFile, err := c.File(fieldName)
+	if c.Request().MultipartForm != nil {
+		for fieldName := range c.Request().MultipartForm.File {
+			uploadedFile, err := GetFile(c, fieldName)
 			if err != nil {
 				continue
 			}
@@ -438,6 +436,22 @@ func (fum *FileUploadMiddleware) isAllowedType(mimeType string) bool {
 		}
 	}
 	return false
+}
+
+// Global storage manager instance
+var globalStorageManager *StorageManager
+
+// GetGlobalStorageManager returns the global storage manager
+func GetGlobalStorageManager() *StorageManager {
+	if globalStorageManager == nil {
+		globalStorageManager = NewStorageManager()
+	}
+	return globalStorageManager
+}
+
+// SetGlobalStorageManager sets the global storage manager
+func SetGlobalStorageManager(manager *StorageManager) {
+	globalStorageManager = manager
 }
 
 func (fum *FileUploadMiddleware) WithMaxFileSize(size int64) *FileUploadMiddleware {

@@ -13,20 +13,20 @@ import (
 
 // TrimStringsMiddleware trims whitespace from all string inputs
 func TrimStringsMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		if !config.TrimStrings {
 			return c.Next()
 		}
 
 		// Parse form data if available
-		if c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH" {
-			c.Request.ParseForm()
+		if c.Request().Method == "POST" || c.Request().Method == "PUT" || c.Request().Method == "PATCH" {
+			c.Request().ParseForm()
 			
 			// Trim form values
-			for key, values := range c.Request.PostForm {
+			for key, values := range c.Request().PostForm {
 				for i, value := range values {
-					c.Request.PostForm[key][i] = strings.TrimSpace(value)
+					c.Request().PostForm[key][i] = strings.TrimSpace(value)
 				}
 			}
 		}
@@ -37,17 +37,17 @@ func TrimStringsMiddleware() MiddlewareFunc {
 
 // ConvertEmptyStringsToNullMiddleware converts empty strings to null values
 func ConvertEmptyStringsToNullMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		if !config.ConvertEmptyToNull {
 			return c.Next()
 		}
 
-		if c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH" {
-			c.Request.ParseForm()
+		if c.Request().Method == "POST" || c.Request().Method == "PUT" || c.Request().Method == "PATCH" {
+			c.Request().ParseForm()
 			
 			// Convert empty strings to nil (represented by removing the key)
-			for key, values := range c.Request.PostForm {
+			for key, values := range c.Request().PostForm {
 				var newValues []string
 				for _, value := range values {
 					if strings.TrimSpace(value) != "" {
@@ -55,9 +55,9 @@ func ConvertEmptyStringsToNullMiddleware() MiddlewareFunc {
 					}
 				}
 				if len(newValues) > 0 {
-					c.Request.PostForm[key] = newValues
+					c.Request().PostForm[key] = newValues
 				} else {
-					delete(c.Request.PostForm, key)
+					delete(c.Request().PostForm, key)
 				}
 			}
 		}
@@ -68,14 +68,14 @@ func ConvertEmptyStringsToNullMiddleware() MiddlewareFunc {
 
 // InputSanitizationMiddleware sanitizes all string inputs
 func InputSanitizationMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		
-		if c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH" {
-			c.Request.ParseForm()
+		if c.Request().Method == "POST" || c.Request().Method == "PUT" || c.Request().Method == "PATCH" {
+			c.Request().ParseForm()
 			
 			// Sanitize form values
-			for key, values := range c.Request.PostForm {
+			for key, values := range c.Request().PostForm {
 				for i, value := range values {
 					// Basic sanitization
 					sanitized := SanitizeString(value)
@@ -90,7 +90,7 @@ func InputSanitizationMiddleware() MiddlewareFunc {
 						sanitized = sanitized[:config.MaxInputLength]
 					}
 					
-					c.Request.PostForm[key][i] = sanitized
+					c.Request().PostForm[key][i] = sanitized
 				}
 			}
 		}
@@ -101,14 +101,14 @@ func InputSanitizationMiddleware() MiddlewareFunc {
 
 // CSRFProtectionMiddleware provides CSRF protection
 func CSRFProtectionMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		if !config.CSRFProtection {
 			return c.Next()
 		}
 
 		// Skip CSRF protection for safe methods
-		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
+		if c.Request().Method == "GET" || c.Request().Method == "HEAD" || c.Request().Method == "OPTIONS" {
 			// Set CSRF token for safe methods
 			if err := c.SetCSRFToken(); err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -132,19 +132,19 @@ func CSRFProtectionMiddleware() MiddlewareFunc {
 
 // XSSProtectionMiddleware adds XSS protection headers
 func XSSProtectionMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		
 		if config.XSSProtection {
-			c.Header("X-XSS-Protection", "1; mode=block")
+			c.SetHeader("X-XSS-Protection", "1; mode=block")
 		}
 		
 		if config.ContentTypeOptions {
-			c.Header("X-Content-Type-Options", "nosniff")
+			c.SetHeader("X-Content-Type-Options", "nosniff")
 		}
 		
 		if config.FrameOptions != "" {
-			c.Header("X-Frame-Options", config.FrameOptions)
+			c.SetHeader("X-Frame-Options", config.FrameOptions)
 		}
 
 		return c.Next()
@@ -153,7 +153,7 @@ func XSSProtectionMiddleware() MiddlewareFunc {
 
 // SecurityHeadersMiddleware adds comprehensive security headers
 func SecurityHeadersMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 
 		// HSTS Header
@@ -165,24 +165,24 @@ func SecurityHeadersMiddleware() MiddlewareFunc {
 			if config.HSTS.Preload {
 				hstsValue += "; preload"
 			}
-			c.Header("Strict-Transport-Security", hstsValue)
+			c.SetHeader("Strict-Transport-Security", hstsValue)
 		}
 
 		// Content Security Policy
 		if config.CSP.Enabled {
 			cspValue := buildCSPHeader(&config.CSP)
-			c.Header("Content-Security-Policy", cspValue)
+			c.SetHeader("Content-Security-Policy", cspValue)
 		}
 
 		// Referrer Policy
 		if config.ReferrerPolicy != "" {
-			c.Header("Referrer-Policy", config.ReferrerPolicy)
+			c.SetHeader("Referrer-Policy", config.ReferrerPolicy)
 		}
 
 		// Additional security headers
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", config.FrameOptions)
-		c.Header("X-XSS-Protection", "1; mode=block")
+		c.SetHeader("X-Content-Type-Options", "nosniff")
+		c.SetHeader("X-Frame-Options", config.FrameOptions)
+		c.SetHeader("X-XSS-Protection", "1; mode=block")
 
 		return c.Next()
 	}
@@ -190,7 +190,7 @@ func SecurityHeadersMiddleware() MiddlewareFunc {
 
 // EnhancedCORSMiddleware provides CORS support with comprehensive configuration
 func EnhancedCORSMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		if !config.CORSEnabled {
 			return c.Next()
@@ -209,36 +209,36 @@ func EnhancedCORSMiddleware() MiddlewareFunc {
 		
 		if allowedOrigin != "" {
 			if allowedOrigin == "*" {
-				c.Header("Access-Control-Allow-Origin", "*")
+				c.SetHeader("Access-Control-Allow-Origin", "*")
 			} else {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
+				c.SetHeader("Access-Control-Allow-Origin", origin)
+				c.SetHeader("Vary", "Origin")
 			}
 		}
 
 		// Set other CORS headers
 		if len(config.CORSAllowedMethods) > 0 {
-			c.Header("Access-Control-Allow-Methods", strings.Join(config.CORSAllowedMethods, ", "))
+			c.SetHeader("Access-Control-Allow-Methods", strings.Join(config.CORSAllowedMethods, ", "))
 		}
 
 		if len(config.CORSAllowedHeaders) > 0 {
-			c.Header("Access-Control-Allow-Headers", strings.Join(config.CORSAllowedHeaders, ", "))
+			c.SetHeader("Access-Control-Allow-Headers", strings.Join(config.CORSAllowedHeaders, ", "))
 		}
 
 		if len(config.CORSExposedHeaders) > 0 {
-			c.Header("Access-Control-Expose-Headers", strings.Join(config.CORSExposedHeaders, ", "))
+			c.SetHeader("Access-Control-Expose-Headers", strings.Join(config.CORSExposedHeaders, ", "))
 		}
 
 		if config.CORSMaxAge > 0 {
-			c.Header("Access-Control-Max-Age", strconv.Itoa(config.CORSMaxAge))
+			c.SetHeader("Access-Control-Max-Age", strconv.Itoa(config.CORSMaxAge))
 		}
 
 		if config.CORSAllowCredentials {
-			c.Header("Access-Control-Allow-Credentials", "true")
+			c.SetHeader("Access-Control-Allow-Credentials", "true")
 		}
 
 		// Handle preflight requests
-		if c.Request.Method == "OPTIONS" {
+		if c.Request().Method == "OPTIONS" {
 			c.Status(http.StatusNoContent)
 			c.Abort()
 			return nil
@@ -250,7 +250,7 @@ func EnhancedCORSMiddleware() MiddlewareFunc {
 
 // SQLInjectionProtectionMiddleware provides additional SQL injection protection
 func SQLInjectionProtectionMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		// SQL injection patterns to detect
 		sqlPatterns := []string{
 			`(?i)(union\s+select)`,
@@ -270,17 +270,17 @@ func SQLInjectionProtectionMiddleware() MiddlewareFunc {
 			`(?i)(/\*.*\*/)`,
 		}
 
-		if c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH" {
-			c.Request.ParseForm()
+		if c.Request().Method == "POST" || c.Request().Method == "PUT" || c.Request().Method == "PATCH" {
+			c.Request().ParseForm()
 
-			for _, values := range c.Request.PostForm {
+			for _, values := range c.Request().PostForm {
 				for _, value := range values {
 					for _, pattern := range sqlPatterns {
 						if matched, _ := regexp.MatchString(pattern, value); matched {
 							Warn("Potential SQL injection attempt detected", map[string]interface{}{
 								"ip":      c.RemoteIP(),
-								"url":     c.Request.URL.String(),
-								"method":  c.Request.Method,
+								"url":     c.Request().URL.String(),
+								"method":  c.Request().Method,
 								"pattern": pattern,
 								"value":   value,
 							})
@@ -301,18 +301,18 @@ func SQLInjectionProtectionMiddleware() MiddlewareFunc {
 
 // RateLimitingSecurityMiddleware provides security-focused rate limiting
 func RateLimitingSecurityMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		config := GetSecurityConfig()
 		
 		// Create a security-focused rate limiter for login attempts
-		if strings.Contains(c.Request.URL.Path, "/login") || 
-		   strings.Contains(c.Request.URL.Path, "/auth") {
+		if strings.Contains(c.Request().URL.Path, "/login") || 
+		   strings.Contains(c.Request().URL.Path, "/auth") {
 			
 			// Use IP-based rate limiting for authentication endpoints
 			key := fmt.Sprintf("auth_attempts:%s", c.RemoteIP())
 			limiter := NewMemoryRateLimiter("token_bucket")
 			
-			result, err := limiter.Allow(c.Request.Context(), key, config.LoginRateLimit, config.FailedLoginWindow)
+			result, err := limiter.Allow(c.Request().Context(), key, config.LoginRateLimit, config.FailedLoginWindow)
 			if err != nil {
 				Error("Rate limiting error", map[string]interface{}{
 					"error": err.Error(),
@@ -328,7 +328,7 @@ func RateLimitingSecurityMiddleware() MiddlewareFunc {
 					"reset":     result.ResetTime,
 				})
 				
-				c.Header("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
+				c.SetHeader("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
 				return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
 					"error":       "Too many authentication attempts",
 					"message":     "Please wait before trying again",
@@ -343,7 +343,7 @@ func RateLimitingSecurityMiddleware() MiddlewareFunc {
 
 // SecurityLoggerMiddleware logs security-related events
 func SecurityLoggerMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		start := time.Now()
 		
 		// Log potentially suspicious requests
@@ -351,9 +351,9 @@ func SecurityLoggerMiddleware() MiddlewareFunc {
 			Warn("Suspicious request detected", map[string]interface{}{
 				"ip":         c.RemoteIP(),
 				"user_agent": c.UserAgent(),
-				"method":     c.Request.Method,
-				"url":        c.Request.URL.String(),
-				"headers":    c.Request.Header,
+				"method":     c.Request().Method,
+				"url":        c.Request().URL.String(),
+				"headers":    c.Request().Header,
 			})
 		}
 
@@ -408,9 +408,9 @@ func buildCSPHeader(csp *CSPConfig) string {
 }
 
 // isSuspiciousRequest checks if a request looks suspicious
-func isSuspiciousRequest(c *Context) bool {
+func isSuspiciousRequest(c Context) bool {
 	userAgent := c.UserAgent()
-	url := c.Request.URL.String()
+	url := c.Request().URL.String()
 
 	// Check for common attack patterns
 	suspiciousPatterns := []string{

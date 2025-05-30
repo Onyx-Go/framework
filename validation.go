@@ -283,14 +283,14 @@ func confirmedRule(field string, value interface{}, params []string) error {
 	return fmt.Errorf("confirmed rule not yet implemented for %s field", field)
 }
 
-func (c *Context) Validate(rules map[string][]string) (*Validator, error) {
+func ValidateRequest(c Context, rules map[string][]string) (*Validator, error) {
 	data := make(map[string]interface{})
 	
-	if err := c.Request.ParseForm(); err != nil {
+	if err := c.Request().ParseForm(); err != nil {
 		return nil, err
 	}
 	
-	for key, values := range c.Request.Form {
+	for key, values := range c.Request().Form {
 		if len(values) == 1 {
 			data[key] = values[0]
 		} else {

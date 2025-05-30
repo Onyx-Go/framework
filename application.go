@@ -349,6 +349,10 @@ func (app *Application) HeadHandler(pattern string, handler HandlerFunc, middlew
 	app.HEAD(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
 }
 
+func (app *Application) AnyHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.ANY(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
 // Helper functions to convert between old and new function types
 func (app *Application) convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
 	return func(c httpInternal.Context) error {

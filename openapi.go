@@ -358,9 +358,10 @@ func (b *OpenAPIBuilder) AddAPIKeyAuth(name, in string) *OpenAPIBuilder {
 func (b *OpenAPIBuilder) FromRouter(router *Router) *OpenAPIBuilder {
 	b.router = router
 	
-	for _, route := range router.routes {
-		b.addRouteToSpec(route)
-	}
+	// TODO: Implement route extraction with new interface-based router
+	// For now, skip auto-discovery from router routes since the interface doesn't expose them
+	// OpenAPI generation will need to work through documentation middleware recording instead
+	_ = router // Suppress unused variable warning
 	
 	b.spec.Components = b.components
 	return b
@@ -384,8 +385,8 @@ func (b *OpenAPIBuilder) JSON() ([]byte, error) {
 }
 
 // addRouteToSpec adds a route to the OpenAPI specification
-func (b *OpenAPIBuilder) addRouteToSpec(route *Route) {
-	path := b.convertPathToOpenAPI(route.pattern)
+func (b *OpenAPIBuilder) addRouteToSpec(route Route) {
+	path := b.convertPathToOpenAPI(route.Pattern())
 	
 	if _, exists := b.spec.Paths[path]; !exists {
 		b.spec.Paths[path] = PathItem{}
@@ -394,7 +395,7 @@ func (b *OpenAPIBuilder) addRouteToSpec(route *Route) {
 	pathItem := b.spec.Paths[path]
 	operation := b.createOperationFromRoute(route)
 	
-	switch strings.ToLower(route.method) {
+	switch strings.ToLower(route.Method()) {
 	case "get":
 		pathItem.Get = operation
 	case "post":
@@ -425,7 +426,7 @@ func (b *OpenAPIBuilder) convertPathToOpenAPI(pattern string) string {
 }
 
 // createOperationFromRoute creates an OpenAPI operation from a route
-func (b *OpenAPIBuilder) createOperationFromRoute(route *Route) *Operation {
+func (b *OpenAPIBuilder) createOperationFromRoute(route Route) *Operation {
 	operation := &Operation{
 		OperationID: b.generateOperationID(route),
 		Summary:     b.generateSummary(route),
@@ -434,12 +435,12 @@ func (b *OpenAPIBuilder) createOperationFromRoute(route *Route) *Operation {
 	}
 	
 	// Add tags based on path
-	if tag := b.extractTagFromPath(route.pattern); tag != "" {
+	if tag := b.extractTagFromPath(route.Pattern()); tag != "" {
 		operation.Tags = []string{tag}
 	}
 	
 	// Add request body for POST, PUT, PATCH
-	if route.method == "POST" || route.method == "PUT" || route.method == "PATCH" {
+	if route.Method() == "POST" || route.Method() == "PUT" || route.Method() == "PATCH" {
 		operation.RequestBody = b.generateRequestBody()
 	}
 	
@@ -447,9 +448,9 @@ func (b *OpenAPIBuilder) createOperationFromRoute(route *Route) *Operation {
 }
 
 // generateOperationID generates a unique operation ID
-func (b *OpenAPIBuilder) generateOperationID(route *Route) string {
-	method := strings.ToLower(route.method)
-	path := strings.ReplaceAll(route.pattern, "/", "_")
+func (b *OpenAPIBuilder) generateOperationID(route Route) string {
+	method := strings.ToLower(route.Method())
+	path := strings.ReplaceAll(route.Pattern(), "/", "_")
 	path = strings.ReplaceAll(path, "{", "")
 	path = strings.ReplaceAll(path, "}", "")
 	path = regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(path, "")
@@ -458,18 +459,18 @@ func (b *OpenAPIBuilder) generateOperationID(route *Route) string {
 }
 
 // generateSummary generates a summary for the operation
-func (b *OpenAPIBuilder) generateSummary(route *Route) string {
-	method := strings.ToUpper(route.method)
-	path := route.pattern
+func (b *OpenAPIBuilder) generateSummary(route Route) string {
+	method := strings.ToUpper(route.Method())
+	path := route.Pattern()
 	
 	return fmt.Sprintf("%s %s", method, path)
 }
 
 // extractParameters extracts parameters from route pattern
-func (b *OpenAPIBuilder) extractParameters(route *Route) []Parameter {
+func (b *OpenAPIBuilder) extractParameters(route Route) []Parameter {
 	var parameters []Parameter
 	
-	for _, paramName := range route.paramNames {
+	for _, paramName := range route.ParamNames() {
 		param := Parameter{
 			Name:        paramName,
 			In:          "path",
@@ -481,7 +482,7 @@ func (b *OpenAPIBuilder) extractParameters(route *Route) []Parameter {
 		}
 		
 		// Try to infer type from pattern
-		if b.isIntParameter(route.pattern, paramName) {
+		if b.isIntParameter(route.Pattern(), paramName) {
 			param.Schema.Type = "integer"
 			param.Schema.Format = "int64"
 		}
@@ -516,11 +517,11 @@ func (b *OpenAPIBuilder) extractTagFromPath(pattern string) string {
 }
 
 // generateDefaultResponses generates default responses for an operation
-func (b *OpenAPIBuilder) generateDefaultResponses(route *Route) map[string]Response {
+func (b *OpenAPIBuilder) generateDefaultResponses(route Route) map[string]Response {
 	responses := make(map[string]Response)
 	
 	// Default success response
-	if route.method == "POST" {
+	if route.Method() == "POST" {
 		responses["201"] = Response{
 			Description: "Created",
 			Content: map[string]MediaType{
@@ -535,7 +536,7 @@ func (b *OpenAPIBuilder) generateDefaultResponses(route *Route) map[string]Respo
 				},
 			},
 		}
-	} else if route.method == "DELETE" {
+	} else if route.Method() == "DELETE" {
 		responses["204"] = Response{
 			Description: "No Content",
 		}
