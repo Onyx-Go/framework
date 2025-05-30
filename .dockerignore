@@ -1,0 +1,84 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+storage/logs/*
+
+# Cache
+storage/cache/*
+storage/sessions/*
+
+# Test files
+*_test.go
+testdata/
+coverage.*
+*.prof
+
+# Build artifacts
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Environment files
+.env
+.env.*
+
+# Node modules (if any documentation uses Node.js)
+node_modules/
+
+# Vendor (if using vendor directory)
+vendor/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+circle.yml
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Kubernetes
+k8s/
+*.yaml
+*.yml
+
+# Deployment
+deploy/
+deployment/
+
+# Benchmark results
+benchmark*
+*.bench
+
+# Go workspace
+go.work
+go.work.sum

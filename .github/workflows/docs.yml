@@ -1,0 +1,301 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - '**.md'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - '**.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  generate-docs:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Install documentation tools
+      run: |
+        go install golang.org/x/tools/cmd/godoc@latest
+        go install github.com/swaggo/swag/cmd/swag@latest
+        
+    - name: Generate API documentation
+      run: |
+        mkdir -p generated-docs/api
+        
+        # Generate Swagger/OpenAPI docs
+        if [ -f "main.go" ] || [ -f "cmd/onyx/main.go" ]; then
+          swag init -g cmd/onyx/main.go -o generated-docs/api --parseDependency --parseInternal
+        fi
+        
+        # Generate godoc HTML
+        godoc -html . > generated-docs/godoc.html
+        
+    - name: Generate package documentation
+      run: |
+        mkdir -p generated-docs/packages
+        
+        # Generate documentation for each package
+        for pkg in $(go list ./...); do
+          pkg_name=$(echo $pkg | sed 's|github.com/onyx-go/framework/||' | tr '/' '_')
+          godoc -html $pkg > generated-docs/packages/${pkg_name}.html
+        done
+        
+    - name: Generate CLI documentation
+      run: |
+        mkdir -p generated-docs/cli
+        
+        # Build the CLI tool
+        go build -o onyx-cli ./cmd/onyx
+        
+        # Generate command documentation
+        echo "# Onyx CLI Commands" > generated-docs/cli/commands.md
+        echo "" >> generated-docs/cli/commands.md
+        
+        # Get list of available commands
+        ./onyx-cli --help >> generated-docs/cli/commands.md 2>&1 || true
+        
+        # Generate detailed help for major commands
+        for cmd in make migrate serve route cache; do
+          echo -e "\n## $cmd Commands\n" >> generated-docs/cli/commands.md
+          ./onyx-cli $cmd --help >> generated-docs/cli/commands.md 2>&1 || true
+        done
+        
+    - name: Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: generated-docs
+        path: generated-docs/
+
+  validate-markdown:
+    name: Validate Markdown
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install markdownlint
+      run: npm install -g markdownlint-cli
+      
+    - name: Lint Markdown files
+      run: |
+        markdownlint "**/*.md" --ignore node_modules --ignore vendor || true
+        
+    - name: Check for broken links
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        use-verbose-mode: 'yes'
+        config-file: '.github/mlc_config.json'
+        folder-path: '.'
+        max-depth: 2
+
+  build-docs-site:
+    name: Build Documentation Site
+    runs-on: ubuntu-latest
+    needs: [generate-docs]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download generated docs
+      uses: actions/download-artifact@v3
+      with:
+        name: generated-docs
+        path: generated-docs/
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: docs/package-lock.json
+      if: hashFiles('docs/package.json') != ''
+      
+    - name: Install dependencies
+      run: |
+        if [ -f "docs/package.json" ]; then
+          cd docs && npm ci
+        fi
+        
+    - name: Build documentation site
+      run: |
+        if [ -f "docs/package.json" ]; then
+          cd docs && npm run build
+        else
+          # Create a simple static site if no build system exists
+          mkdir -p dist
+          cp -r generated-docs/* dist/
+          
+          # Create index.html
+          cat > dist/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Onyx Framework Documentation</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .nav { margin-bottom: 30px; }
+                .nav a { margin-right: 20px; text-decoration: none; color: #007acc; }
+                .nav a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>Onyx Framework Documentation</h1>
+            <div class="nav">
+                <a href="api/">API Documentation</a>
+                <a href="cli/commands.md">CLI Commands</a>
+                <a href="godoc.html">GoDoc</a>
+                <a href="packages/">Package Documentation</a>
+            </div>
+            <p>Welcome to the Onyx Framework documentation.</p>
+        </body>
+        </html>
+        EOF
+        fi
+        
+    - name: Upload built site
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-site
+        path: dist/
+
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: [build-docs-site, validate-markdown]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Download built site
+      uses: actions/download-artifact@v3
+      with:
+        name: docs-site
+        path: ./dist
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v3
+      
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: ./dist
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2
+
+  check-code-examples:
+    name: Validate Code Examples
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Extract and validate Go code from markdown
+      run: |
+        # Find all Go code blocks in markdown files
+        find . -name "*.md" -exec grep -l "```go" {} \; > md_files.txt
+        
+        mkdir -p /tmp/code-examples
+        
+        # Extract Go code blocks and try to compile them
+        while IFS= read -r file; do
+          echo "Checking Go code examples in $file"
+          
+          # Extract Go code blocks (simple approach)
+          awk '/```go/,/```/' "$file" | grep -v '```' > "/tmp/code-examples/$(basename "$file" .md).go" 2>/dev/null || true
+          
+          # Add package declaration if missing
+          code_file="/tmp/code-examples/$(basename "$file" .md).go"
+          if [ -f "$code_file" ] && [ -s "$code_file" ]; then
+            if ! grep -q "^package " "$code_file"; then
+              echo "package main" | cat - "$code_file" > temp && mv temp "$code_file"
+            fi
+            
+            # Try to check syntax (but allow some undefined references)
+            go fmt "$code_file" >/dev/null 2>&1 || echo "Warning: Code example in $file may have syntax issues"
+          fi
+        done < md_files.txt
+
+  update-readme:
+    name: Update README
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Update README with latest stats
+      run: |
+        # Get some project stats
+        TOTAL_LINES=$(find . -name "*.go" -not -path "./vendor/*" -exec wc -l {} + | tail -1 | awk '{print $1}')
+        TOTAL_FILES=$(find . -name "*.go" -not -path "./vendor/*" | wc -l)
+        TOTAL_PACKAGES=$(go list ./... | wc -l)
+        
+        # Update README if it has placeholders
+        if grep -q "{{STATS}}" README.md; then
+          sed -i "s/{{TOTAL_LINES}}/$TOTAL_LINES/g" README.md
+          sed -i "s/{{TOTAL_FILES}}/$TOTAL_FILES/g" README.md
+          sed -i "s/{{TOTAL_PACKAGES}}/$TOTAL_PACKAGES/g" README.md
+          sed -i "s/{{LAST_UPDATED}}/$(date -u +%Y-%m-%d)/g" README.md
+          
+          # Commit if changes were made
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add README.md
+            git commit -m "Update README with latest project stats"
+            git push
+          fi
+        fi
