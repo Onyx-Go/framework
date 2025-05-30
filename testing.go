@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	
+	"github.com/onyx-go/framework/internal/auth"
 	"strings"
 	"testing"
 )
@@ -73,7 +75,7 @@ func (tc *TestCase) WithSession(data map[string]interface{}) *TestCase {
 	return tc
 }
 
-func (tc *TestCase) ActingAs(user User) *TestCase {
+func (tc *TestCase) ActingAs(user auth.User) *TestCase {
 	return tc
 }
 
@@ -114,7 +116,7 @@ func (tc *TestCase) makeRequest(method, path string, data interface{}, headers m
 	tc.request = req
 	tc.response = httptest.NewRecorder()
 
-	tc.app.ServeHTTP(tc.response, req)
+	tc.app.Router().ServeHTTP(tc.response, req)
 
 	return tc
 }

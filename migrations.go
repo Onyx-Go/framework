@@ -1932,16 +1932,11 @@ func Schema() SchemaBuilder {
 	return nil
 }
 
-// Context schema helper
-func (c *Context) Schema() SchemaBuilder {
-	if c.app != nil && c.app.Container() != nil {
-		if schema, err := c.app.Container().Make("schema"); err == nil {
-			if s, ok := schema.(SchemaBuilder); ok {
-				return s
-			}
-		}
-	}
-	return nil
+// Context schema helper function
+func GetSchemaFromContext(c Context) SchemaBuilder {
+	// For now, use the global schema since Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container/SchemaBuilder
+	return Schema()
 }
 
 // Example migration implementation

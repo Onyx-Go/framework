@@ -98,18 +98,18 @@ func (adm *APIDocumentationManager) Initialize() error {
 	
 	// Create and configure middleware
 	adm.middleware = CreateDocumentationMiddleware(
-		adm.app.Router,
+		adm.app.Router(),
 		adm.docBuilder,
 		adm.versionManager,
 		adm.middlewareConfig,
 	)
 	
 	// Add middleware to application
-	adm.app.Use(adm.middleware.Middleware())
+	adm.app.UseMiddleware(adm.middleware.Middleware())
 	
 	// Add version middleware if versioning is enabled
 	if adm.versionManager != nil {
-		adm.app.Use(adm.versionManager.CreateVersionMiddleware())
+		adm.app.UseMiddleware(adm.versionManager.CreateVersionMiddleware())
 	}
 	
 	return nil
@@ -240,11 +240,11 @@ func (app *Application) GetAPIDocumentationManager() *APIDocumentationManager {
 
 // CORSForDocs returns CORS middleware configured for documentation
 func CORSForDocs() MiddlewareFunc {
-	return func(c *Context) error {
-		if strings.HasPrefix(c.Request.URL.Path, "/docs") {
-			c.Header("Access-Control-Allow-Origin", "*")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, API-Version")
+	return func(c Context) error {
+		if strings.HasPrefix(c.Request().URL.Path, "/docs") {
+			c.SetHeader("Access-Control-Allow-Origin", "*")
+			c.SetHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.SetHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, API-Version")
 			
 			if c.Method() == "OPTIONS" {
 				c.Status(204)
@@ -258,18 +258,18 @@ func CORSForDocs() MiddlewareFunc {
 
 // APIResponseMiddleware adds consistent API response structure
 func APIResponseMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Add API version to response headers
 		if version := GetVersionFromContext(c); version != "" {
-			c.Header("API-Version", version)
+			c.SetHeader("API-Version", version)
 		}
 		
 		// Add request ID for tracing
-		requestID := c.GetHeader("X-Request-ID")
+		requestID := c.Header("X-Request-ID")
 		if requestID == "" {
 			requestID = fmt.Sprintf("%d", time.Now().UnixNano())
 		}
-		c.Header("X-Request-ID", requestID)
+		c.SetHeader("X-Request-ID", requestID)
 		
 		return c.Next()
 	}
@@ -376,19 +376,19 @@ func CreateDocumentedRoute(
 	// Add the route
 	switch strings.ToUpper(method) {
 	case "GET":
-		app.Get(pattern, handler, middleware...)
+		app.GetHandler(pattern, handler, middleware...)
 	case "POST":
-		app.Post(pattern, handler, middleware...)
+		app.PostHandler(pattern, handler, middleware...)
 	case "PUT":
-		app.Put(pattern, handler, middleware...)
+		app.PutHandler(pattern, handler, middleware...)
 	case "DELETE":
-		app.Delete(pattern, handler, middleware...)
+		app.DeleteHandler(pattern, handler, middleware...)
 	case "PATCH":
-		app.Patch(pattern, handler, middleware...)
+		app.PatchHandler(pattern, handler, middleware...)
 	case "OPTIONS":
-		app.Options(pattern, handler, middleware...)
+		app.OptionsHandler(pattern, handler, middleware...)
 	case "HEAD":
-		app.Head(pattern, handler, middleware...)
+		app.HeadHandler(pattern, handler, middleware...)
 	}
 	
 	// Add documentation

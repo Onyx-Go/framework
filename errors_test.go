@@ -65,7 +65,7 @@ func TestErrorHandlerJSONResponse(t *testing.T) {
 	app := New()
 	app.SetDebug(true)
 	
-	app.Get("/error", func(c *Context) error {
+	app.GetHandler("/error", func(c Context) error {
 		return BadRequest("Invalid request data")
 	})
 	
@@ -73,7 +73,7 @@ func TestErrorHandlerJSONResponse(t *testing.T) {
 	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 400 {
 		t.Errorf("Expected status 400, got %d", w.Code)
@@ -108,7 +108,7 @@ func TestErrorHandlerHTMLResponse(t *testing.T) {
 	app := New()
 	app.SetDebug(false)
 	
-	app.Get("/error", func(c *Context) error {
+	app.GetHandler("/error", func(c Context) error {
 		return InternalServerError("Something went wrong")
 	})
 	
@@ -116,7 +116,7 @@ func TestErrorHandlerHTMLResponse(t *testing.T) {
 	req.Header.Set("Accept", "text/html")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 500 {
 		t.Errorf("Expected status 500, got %d", w.Code)
@@ -139,19 +139,19 @@ func TestErrorHandlerHTMLResponse(t *testing.T) {
 func TestValidationErrorResponse(t *testing.T) {
 	app := New()
 	
-	app.Post("/validate", func(c *Context) error {
+	app.PostHandler("/validate", func(c Context) error {
 		validationErrors := NewValidationErrors(
 			NewValidationError("name", "Name is required", ""),
 			NewValidationError("email", "Email format is invalid", "invalid-email"),
 		)
-		return c.Error(validationErrors)
+		return HandleError(c, validationErrors)
 	})
 	
 	req := httptest.NewRequest("POST", "/validate", nil)
 	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 422 {
 		t.Errorf("Expected status 422, got %d", w.Code)
@@ -177,20 +177,20 @@ func TestContextErrorMethods(t *testing.T) {
 	app := New()
 	
 	// Test various context error methods
-	app.Get("/bad-request", func(c *Context) error {
-		return c.BadRequest("Bad request")
+	app.GetHandler("/bad-request", func(c Context) error {
+		return HandleBadRequest(c, "Bad request")
 	})
 	
-	app.Get("/unauthorized", func(c *Context) error {
-		return c.Unauthorized("Unauthorized")
+	app.GetHandler("/unauthorized", func(c Context) error {
+		return HandleUnauthorized(c, "Unauthorized")
 	})
 	
-	app.Get("/forbidden", func(c *Context) error {
-		return c.Forbidden("Forbidden")
+	app.GetHandler("/forbidden", func(c Context) error {
+		return HandleForbidden(c, "Forbidden")
 	})
 	
-	app.Get("/not-found", func(c *Context) error {
-		return c.NotFound("Not found")
+	app.GetHandler("/not-found", func(c Context) error {
+		return HandleNotFound(c, "Not found")
 	})
 	
 	tests := []struct {
@@ -209,7 +209,7 @@ func TestContextErrorMethods(t *testing.T) {
 		req.Header.Set("Accept", "application/json")
 		w := httptest.NewRecorder()
 		
-		app.ServeHTTP(w, req)
+		app.Router().ServeHTTP(w, req)
 		
 		if w.Code != test.expectedStatus {
 			t.Errorf("For %s: expected status %d, got %d", test.path, test.expectedStatus, w.Code)
@@ -232,7 +232,7 @@ func TestPanicRecovery(t *testing.T) {
 	app := New()
 	app.SetDebug(true)
 	
-	app.Get("/panic", func(c *Context) error {
+	app.GetHandler("/panic", func(c Context) error {
 		panic("Test panic")
 	})
 	
@@ -240,11 +240,15 @@ func TestPanicRecovery(t *testing.T) {
 	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 500 {
 		t.Errorf("Expected status 500, got %d", w.Code)
 	}
+	
+	// Debug: Print actual response
+	t.Logf("Response body: %s", w.Body.String())
+	t.Logf("Response headers: %v", w.Header())
 	
 	var response map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
@@ -266,7 +270,7 @@ type TestErrorReporter struct {
 	ReportedErrors []error
 }
 
-func (ter *TestErrorReporter) Report(err error, c *Context) error {
+func (ter *TestErrorReporter) Report(err error, c Context) error {
 	ter.ReportedErrors = append(ter.ReportedErrors, err)
 	return nil
 }
@@ -287,14 +291,14 @@ func TestCustomErrorReporter(t *testing.T) {
 	globalErrorHandler = errorHandler
 	defer func() { globalErrorHandler = originalHandler }()
 	
-	app.Get("/error", func(c *Context) error {
+	app.GetHandler("/error", func(c Context) error {
 		return BadRequest("Test error")
 	})
 	
 	req := httptest.NewRequest("GET", "/error", nil)
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if len(customReporter.ReportedErrors) < 1 {
 		t.Errorf("Expected at least 1 reported error, got %d", len(customReporter.ReportedErrors))
@@ -313,11 +317,15 @@ func TestNotFoundRoutes(t *testing.T) {
 	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 404 {
 		t.Errorf("Expected status 404, got %d", w.Code)
 	}
+	
+	// Debug: Print actual response
+	t.Logf("Response body: %s", w.Body.String())
+	t.Logf("Response headers: %v", w.Header())
 	
 	var response map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
@@ -362,14 +370,12 @@ func TestCommonHTTPErrors(t *testing.T) {
 func TestAbortMethods(t *testing.T) {
 	app := New()
 	
-	app.Get("/abort-with-error", func(c *Context) error {
-		c.AbortWithError(BadRequest("Custom abort error"))
-		return nil
+	app.GetHandler("/abort-with-error", func(c Context) error {
+		return HandleError(c, BadRequest("Custom abort error"))
 	})
 	
-	app.Get("/abort-with-status", func(c *Context) error {
-		c.AbortWithStatus(503)
-		return nil
+	app.GetHandler("/abort-with-status", func(c Context) error {
+		return HandleError(c, ServiceUnavailable("Service Unavailable"))
 	})
 	
 	// Test AbortWithError
@@ -377,7 +383,7 @@ func TestAbortMethods(t *testing.T) {
 	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 400 {
 		t.Errorf("Expected status 400, got %d", w.Code)
@@ -388,7 +394,7 @@ func TestAbortMethods(t *testing.T) {
 	req.Header.Set("Accept", "application/json")
 	w = httptest.NewRecorder()
 	
-	app.ServeHTTP(w, req)
+	app.Router().ServeHTTP(w, req)
 	
 	if w.Code != 503 {
 		t.Errorf("Expected status 503, got %d", w.Code)

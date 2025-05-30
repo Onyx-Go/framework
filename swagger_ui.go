@@ -512,14 +512,14 @@ func RegisterSwaggerUIRoutes(app *Application, server *SwaggerUIServer) {
 	basePath := server.config.Path
 	
 	// Register main handler
-	app.Any(basePath+"/*", func(c *Context) error {
-		server.ServeHTTP(c.ResponseWriter, c.Request)
+	app.AnyHandler(basePath+"/*", func(c Context) error {
+		server.ServeHTTP(c.ResponseWriter(), c.Request())
 		return nil
 	})
 	
 	// Register root path
-	app.Get(basePath, func(c *Context) error {
-		server.ServeHTTP(c.ResponseWriter, c.Request)
+	app.GetHandler(basePath, func(c Context) error {
+		server.ServeHTTP(c.ResponseWriter(), c.Request())
 		return nil
 	})
 }

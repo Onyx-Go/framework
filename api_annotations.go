@@ -235,7 +235,7 @@ type DocumentedHandler struct {
 }
 
 // ServeHTTP implements the handler interface
-func (dh *DocumentedHandler) ServeHTTP(c *Context) error {
+func (dh *DocumentedHandler) ServeHTTP(c Context) error {
 	return dh.Handler(c)
 }
 
@@ -399,7 +399,7 @@ func NewDocumentedRouteGroup(group *RouteGroup, builder *APIDocumentationBuilder
 	return &DocumentedRouteGroup{
 		group:   group,
 		builder: builder,
-		prefix:  group.prefix,
+		prefix:  group.Prefix_,
 	}
 }
 

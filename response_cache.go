@@ -4,9 +4,13 @@ import (
 	"crypto/md5"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
+	
+	httpInternal "github.com/onyx-go/framework/internal/http"
 )
 
 // ResponseCacheConfig configures response caching
@@ -82,7 +86,7 @@ func ResponseCacheMiddleware(config ...ResponseCacheConfig) MiddlewareFunc {
 	}
 	
 	if !cfg.Enabled {
-		return func(c *Context) error {
+		return func(c Context) error {
 			return c.Next()
 		}
 	}
@@ -94,14 +98,14 @@ func ResponseCacheMiddleware(config ...ResponseCacheConfig) MiddlewareFunc {
 	}
 	cache := globalResponseCache
 	
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Check if request should be cached
-		if !cache.shouldCache(c.Request) {
+		if !cache.shouldCache(c.Request()) {
 			return c.Next()
 		}
 		
 		// Generate cache key
-		cacheKey := cache.generateKey(c.Request)
+		cacheKey := cache.generateKey(c.Request())
 		
 		// Try to get from cache
 		if cached := cache.get(cacheKey); cached != nil {
@@ -110,23 +114,27 @@ func ResponseCacheMiddleware(config ...ResponseCacheConfig) MiddlewareFunc {
 			return nil
 		}
 		
-		// Capture response
+		// Create a response recorder to capture the response
 		recorder := &ResponseRecorder{
-			ResponseWriter: c.ResponseWriter,
-			statusCode:     200,
+			ResponseWriter: c.ResponseWriter(),
 		}
-		c.ResponseWriter = recorder
 		
-		// Execute request
+		// Use unsafe pointer manipulation to replace the ResponseWriter
+		originalWriter := c.ResponseWriter()
+		if err := replaceResponseWriterForCache(c, recorder); err != nil {
+			return c.Next()
+		}
+		
+		// Call next middleware/handler
 		err := c.Next()
 		
-		// Cache the response if successful
-		if err == nil && recorder.statusCode < 400 {
-			cache.store(cacheKey, recorder, cfg.DefaultTTL)
-		}
-		
 		// Restore original writer
-		c.ResponseWriter = recorder.ResponseWriter
+		replaceResponseWriterForCache(c, originalWriter)
+		
+		// Cache the response if successful
+		if err == nil && recorder.statusCode >= 200 && recorder.statusCode < 400 {
+			cache.store(cacheKey, recorder, cache.config.DefaultTTL)
+		}
 		
 		return err
 	}
@@ -142,8 +150,9 @@ type ResponseRecorder struct {
 
 // WriteHeader captures the status code
 func (rr *ResponseRecorder) WriteHeader(statusCode int) {
-	rr.statusCode = statusCode
-	if rr.headers == nil {
+	if rr.statusCode == 0 {
+		rr.statusCode = statusCode
+		// Capture headers at the time of WriteHeader
 		rr.headers = make(http.Header)
 		for k, v := range rr.ResponseWriter.Header() {
 			rr.headers[k] = v
@@ -154,6 +163,14 @@ func (rr *ResponseRecorder) WriteHeader(statusCode int) {
 
 // Write captures the response body
 func (rr *ResponseRecorder) Write(data []byte) (int, error) {
+	// If WriteHeader was never called, set default status and headers
+	if rr.statusCode == 0 {
+		rr.statusCode = 200
+		rr.headers = make(http.Header)
+		for k, v := range rr.ResponseWriter.Header() {
+			rr.headers[k] = v
+		}
+	}
 	rr.body = append(rr.body, data...)
 	return rr.ResponseWriter.Write(data)
 }
@@ -305,21 +322,21 @@ func (rc *ResponseCache) evictOldest() {
 }
 
 // serveCached serves a cached response
-func (rc *ResponseCache) serveCached(c *Context, cached *CachedResponse) {
+func (rc *ResponseCache) serveCached(c Context, cached *CachedResponse) {
 	// Set headers
 	for k, v := range cached.Headers {
 		for _, value := range v {
-			c.ResponseWriter.Header().Add(k, value)
+			c.ResponseWriter().Header().Add(k, value)
 		}
 	}
 	
 	// Add cache headers
-	c.ResponseWriter.Header().Set("X-Cache", "HIT")
-	c.ResponseWriter.Header().Set("X-Cache-Expires", cached.ExpiresAt.Format(time.RFC1123))
+	c.ResponseWriter().Header().Set("X-Cache", "HIT")
+	c.ResponseWriter().Header().Set("X-Cache-Expires", cached.ExpiresAt.Format(time.RFC1123))
 	
 	// Write status and body
-	c.ResponseWriter.WriteHeader(cached.StatusCode)
-	c.ResponseWriter.Write(cached.Body)
+	c.ResponseWriter().WriteHeader(cached.StatusCode)
+	c.ResponseWriter().Write(cached.Body)
 }
 
 // ClearCache clears all cached responses
@@ -366,4 +383,30 @@ func (rc *ResponseCache) GetCacheInfo() map[string]interface{} {
 		"last_activity":  metrics.LastActivity,
 		"default_ttl":    rc.config.DefaultTTL,
 	}
+}
+
+// replaceResponseWriterForCache uses unsafe reflection to replace the ResponseWriter in a context
+func replaceResponseWriterForCache(ctx httpInternal.Context, newWriter http.ResponseWriter) error {
+	// Get the value and make sure it's a pointer to a struct
+	ctxValue := reflect.ValueOf(ctx)
+	if ctxValue.Kind() != reflect.Ptr {
+		return fmt.Errorf("context is not a pointer")
+	}
+	
+	ctxElem := ctxValue.Elem()
+	if ctxElem.Kind() != reflect.Struct {
+		return fmt.Errorf("context is not a struct")
+	}
+	
+	// Find the responseWriter field
+	responseWriterField := ctxElem.FieldByName("responseWriter")
+	if !responseWriterField.IsValid() {
+		return fmt.Errorf("responseWriter field not found")
+	}
+	
+	// Use unsafe to modify the unexported field
+	responseWriterPtr := unsafe.Pointer(responseWriterField.UnsafeAddr())
+	*(*http.ResponseWriter)(responseWriterPtr) = newWriter
+	
+	return nil
 }

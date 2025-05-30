@@ -1,0 +1,300 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run gofmt
+      run: |
+        gofmt_files=$(gofmt -l .)
+        if [ -n "$gofmt_files" ]; then
+          echo "The following files are not properly formatted:"
+          echo "$gofmt_files"
+          exit 1
+        fi
+
+    - name: Run goimports
+      run: |
+        go install golang.org/x/tools/cmd/goimports@latest
+        goimports_files=$(goimports -l .)
+        if [ -n "$goimports_files" ]; then
+          echo "The following files have import issues:"
+          echo "$goimports_files"
+          exit 1
+        fi
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Run staticcheck
+      uses: dominikh/staticcheck-action@v1.3.0
+      with:
+        version: "2023.1.6"
+        install-go: false
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=10m --config=.golangci.yml
+        
+    - name: Run ineffassign
+      run: |
+        go install github.com/gordonklaus/ineffassign@latest
+        ineffassign ./...
+
+    - name: Run misspell
+      run: |
+        go install github.com/client9/misspell/cmd/misspell@latest
+        misspell -error .
+
+    - name: Run deadcode
+      run: |
+        go install golang.org/x/tools/cmd/deadcode@latest
+        deadcode -test ./...
+
+    - name: Run gocyclo
+      run: |
+        go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+        gocyclo -over 15 .
+
+  test-coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Run tests with coverage
+      run: |
+        go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        go tool cover -html=coverage.out -o coverage.html
+        
+    - name: Check coverage threshold
+      run: |
+        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "Total coverage: $COVERAGE%"
+        if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+          echo "Coverage $COVERAGE% is below 80% threshold"
+          exit 1
+        fi
+        
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+        
+    - name: Upload coverage to Code Climate
+      uses: paambaati/codeclimate-action@v5.0.0
+      env:
+        CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+      with:
+        coverageCommand: echo "Coverage already generated"
+        coverageLocations: ./coverage.out:gocov
+      if: env.CC_TEST_REPORTER_ID != ''
+
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Run benchmarks
+      run: |
+        go test -bench=. -benchmem -benchtime=10s ./... > benchmark.txt
+        
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark.txt
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Check if godoc can parse packages
+      run: |
+        go install golang.org/x/tools/cmd/godoc@latest
+        for pkg in $(go list ./...); do
+          echo "Checking documentation for $pkg"
+          godoc $pkg > /dev/null
+        done
+        
+    - name: Check for missing documentation
+      run: |
+        go install github.com/golang/lint/golint@latest
+        golint_output=$(golint ./... | grep -E "(should have comment|comment should be)")
+        if [ -n "$golint_output" ]; then
+          echo "Documentation issues found:"
+          echo "$golint_output"
+          exit 1
+        fi
+
+  dependency-analysis:
+    name: Dependency Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Analyze dependencies
+      run: |
+        echo "Direct dependencies:"
+        go list -m all | grep -v "$(go list -m)" | head -20
+        
+        echo -e "\nDependency tree depth:"
+        go mod graph | wc -l
+        
+        echo -e "\nLargest dependencies:"
+        go list -deps ./... | sort | uniq -c | sort -nr | head -10
+        
+        echo -e "\nModule information:"
+        go list -m -versions all | head -10
+
+  module-analysis:
+    name: Module Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Verify module
+      run: |
+        go mod verify
+        go mod tidy
+        git diff --exit-code go.mod go.sum
+        
+    - name: Check for outdated dependencies
+      run: |
+        go install github.com/psampaz/go-mod-outdated@latest
+        go list -u -m -json all | go-mod-outdated -update -direct
+        
+    - name: Check for unused dependencies
+      run: |
+        go install github.com/dominikh/go-tools/cmd/unused@latest
+        unused ./...
+
+  api-compatibility:
+    name: API Compatibility Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.base_ref }}
+        path: base
+        
+    - name: Checkout head
+      uses: actions/checkout@v4
+      with:
+        path: head
+        
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Install apidiff
+      run: go install golang.org/x/exp/cmd/apidiff@latest
+      
+    - name: Check API compatibility
+      run: |
+        cd base && go mod download
+        cd ../head && go mod download
+        cd ..
+        
+        # Compare API changes
+        apidiff base head > api-changes.txt || true
+        
+        if [ -s api-changes.txt ]; then
+          echo "API changes detected:"
+          cat api-changes.txt
+          
+          # Check for breaking changes
+          if grep -q "^-" api-changes.txt; then
+            echo "Breaking changes detected!"
+            exit 1
+          fi
+        else
+          echo "No API changes detected"
+        fi
+        
+    - name: Upload API changes
+      uses: actions/upload-artifact@v3
+      with:
+        name: api-changes
+        path: api-changes.txt
+      if: always()

@@ -1,0 +1,144 @@
+name: 🐛 Bug Report
+description: Report a bug in the Onyx Framework
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported before
+          required: true
+        - label: I have verified this occurs on the latest version of Onyx Framework
+          required: true
+        - label: I have read the documentation and confirmed this is not expected behavior
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug you encountered...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe what you expected to happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Provide step-by-step instructions to reproduce the bug
+      placeholder: |
+        1. Create a new Onyx application...
+        2. Add this code...
+        3. Run the application...
+        4. Observe the error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Sample
+      description: Provide a minimal code sample that reproduces the issue
+      render: go
+      placeholder: |
+        package main
+        
+        import "github.com/onyx-go/framework"
+        
+        func main() {
+            app := onyx.New()
+            // Your code here...
+        }
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: Please provide information about your environment
+      placeholder: |
+        - Onyx Framework version: (e.g., v1.0.0)
+        - Go version: (e.g., go1.21.0)
+        - Operating System: (e.g., macOS 13.5, Ubuntu 22.04, Windows 11)
+        - Architecture: (e.g., amd64, arm64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs
+      description: Include any relevant error messages, stack traces, or logs
+      render: text
+      placeholder: Paste error logs here...
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - Low - Minor issue, workaround available
+        - Medium - Affects functionality but not critical
+        - High - Blocks important functionality
+        - Critical - Security issue or data loss
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Router
+        - Middleware
+        - Database/ORM
+        - Authentication
+        - Configuration
+        - Logging
+        - CLI Tool
+        - Templates
+        - Cache
+        - Queue
+        - Validation
+        - Security
+        - Testing
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here
+      placeholder: Any additional information that might be helpful...

@@ -566,12 +566,12 @@ func Fatal(message string, context ...map[string]interface{}) {
 }
 
 // Context helper for adding request context to logs
-func (c *Context) Log() Logger {
+func LogWithContext(c Context) Logger {
 	if globalLogManager != nil {
 		requestContext := map[string]interface{}{
 			"method":     c.Method(),
 			"url":        c.URL(),
-			"user_agent": c.UserAgent(),
+			"user_agent": c.Header("User-Agent"),
 			"remote_ip":  c.RemoteIP(),
 		}
 		

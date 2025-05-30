@@ -1,0 +1,386 @@
+name: Performance
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM UTC
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: Download dependencies
+      run: go mod download
+      
+    - name: Run benchmarks
+      run: |
+        mkdir -p benchmark-results
+        
+        # Run benchmarks with different configurations
+        echo "Running standard benchmarks..."
+        go test -bench=. -benchmem -benchtime=10s ./... > benchmark-results/standard.txt
+        
+        echo "Running CPU profiling benchmarks..."
+        go test -bench=. -benchmem -cpuprofile=benchmark-results/cpu.prof -benchtime=5s ./...
+        
+        echo "Running memory profiling benchmarks..."
+        go test -bench=. -benchmem -memprofile=benchmark-results/mem.prof -benchtime=5s ./...
+        
+        echo "Running mutex profiling benchmarks..."
+        go test -bench=. -benchmem -mutexprofile=benchmark-results/mutex.prof -benchtime=5s ./...
+        
+    - name: Generate performance report
+      run: |
+        # Create a comprehensive performance report
+        cat > benchmark-results/report.md << 'EOF'
+        # Performance Benchmark Report
+        
+        Generated on: $(date -u)
+        Commit: ${{ github.sha }}
+        Branch: ${{ github.ref_name }}
+        
+        ## Standard Benchmarks
+        
+        ```
+        EOF
+        cat benchmark-results/standard.txt >> benchmark-results/report.md
+        echo '```' >> benchmark-results/report.md
+        
+        # Extract key metrics
+        echo "" >> benchmark-results/report.md
+        echo "## Key Metrics" >> benchmark-results/report.md
+        echo "" >> benchmark-results/report.md
+        grep "Benchmark" benchmark-results/standard.txt | head -10 >> benchmark-results/report.md
+        
+    - name: Compare with baseline (PR only)
+      if: github.event_name == 'pull_request'
+      run: |
+        # Checkout base branch and run benchmarks for comparison
+        git fetch origin ${{ github.base_ref }}
+        git checkout origin/${{ github.base_ref }}
+        
+        echo "Running baseline benchmarks..."
+        go test -bench=. -benchmem -benchtime=10s ./... > benchmark-results/baseline.txt
+        
+        # Switch back to PR branch
+        git checkout ${{ github.sha }}
+        
+        # Install benchcmp for comparison
+        go install golang.org/x/tools/cmd/benchcmp@latest
+        
+        # Compare benchmarks
+        echo "# Benchmark Comparison" > benchmark-results/comparison.md
+        echo "" >> benchmark-results/comparison.md
+        echo "Comparing ${{ github.base_ref }} (baseline) vs ${{ github.head_ref }} (current)" >> benchmark-results/comparison.md
+        echo "" >> benchmark-results/comparison.md
+        echo '```' >> benchmark-results/comparison.md
+        benchcmp benchmark-results/baseline.txt benchmark-results/standard.txt >> benchmark-results/comparison.md || true
+        echo '```' >> benchmark-results/comparison.md
+        
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark-results/
+        
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          if (fs.existsSync('benchmark-results/comparison.md')) {
+            const comparison = fs.readFileSync('benchmark-results/comparison.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🚀 Performance Benchmark Results\n\n${comparison}`
+            });
+          }
+
+  load-test:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: onyx_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Build test application
+      run: |
+        # Create a test application for load testing
+        cat > load_test_app.go << 'EOF'
+        package main
+        
+        import (
+            "log"
+            "github.com/onyx-go/framework"
+        )
+        
+        func main() {
+            app := onyx.New()
+            
+            // Add test routes
+            app.Get("/", func(c onyx.Context) error {
+                return c.String(200, "Hello, World!")
+            })
+            
+            app.Get("/json", func(c onyx.Context) error {
+                return c.JSON(200, map[string]string{"message": "Hello, World!"})
+            })
+            
+            app.Get("/param/:id", func(c onyx.Context) error {
+                return c.JSON(200, map[string]string{"id": c.Param("id")})
+            })
+            
+            log.Fatal(app.Start(":8080"))
+        }
+        EOF
+        
+        go build -o test-app load_test_app.go
+        
+    - name: Start test application
+      run: |
+        ./test-app &
+        sleep 5  # Wait for app to start
+        
+    - name: Install hey (load testing tool)
+      run: |
+        go install github.com/rakyll/hey@latest
+        
+    - name: Run load tests
+      run: |
+        mkdir -p load-test-results
+        
+        echo "Testing simple string response..."
+        hey -n 10000 -c 100 -o csv http://localhost:8080/ > load-test-results/string.csv
+        
+        echo "Testing JSON response..."
+        hey -n 10000 -c 100 -o csv http://localhost:8080/json > load-test-results/json.csv
+        
+        echo "Testing parameterized route..."
+        hey -n 10000 -c 100 -o csv http://localhost:8080/param/123 > load-test-results/param.csv
+        
+        echo "Testing high concurrency..."
+        hey -n 5000 -c 500 -o csv http://localhost:8080/ > load-test-results/high-concurrency.csv
+        
+    - name: Generate load test report
+      run: |
+        # Create load test summary
+        cat > load-test-results/summary.md << 'EOF'
+        # Load Test Results
+        
+        ## Test Configuration
+        - Total requests per test: 10,000 (5,000 for high concurrency)
+        - Concurrent connections: 100 (500 for high concurrency)
+        - Target: Local test application
+        
+        ## Results Summary
+        
+        ### String Response Test
+        EOF
+        
+        # Extract summary stats from hey output
+        for test in string json param high-concurrency; do
+          echo "### ${test^} Test" >> load-test-results/summary.md
+          echo '```' >> load-test-results/summary.md
+          # Note: hey CSV output format may vary, this is a basic example
+          head -10 load-test-results/${test}.csv >> load-test-results/summary.md
+          echo '```' >> load-test-results/summary.md
+          echo "" >> load-test-results/summary.md
+        done
+        
+    - name: Upload load test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: load-test-results
+        path: load-test-results/
+
+  memory-profile:
+    name: Memory Profiling
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Run memory profiling tests
+      run: |
+        mkdir -p memory-profiles
+        
+        # Run tests with memory profiling
+        go test -memprofile=memory-profiles/base.mem -bench=. -benchtime=30s ./...
+        
+        # Generate heap profile
+        go tool pprof -top memory-profiles/base.mem > memory-profiles/heap-top.txt
+        go tool pprof -list=. memory-profiles/base.mem > memory-profiles/heap-list.txt
+        
+    - name: Analyze memory usage
+      run: |
+        # Install memory analysis tools
+        go install github.com/google/pprof@latest
+        
+        # Generate memory usage report
+        echo "# Memory Usage Analysis" > memory-profiles/analysis.md
+        echo "" >> memory-profiles/analysis.md
+        echo "## Top Memory Consumers" >> memory-profiles/analysis.md
+        echo '```' >> memory-profiles/analysis.md
+        head -20 memory-profiles/heap-top.txt >> memory-profiles/analysis.md
+        echo '```' >> memory-profiles/analysis.md
+        
+    - name: Upload memory profiles
+      uses: actions/upload-artifact@v3
+      with:
+        name: memory-profiles
+        path: memory-profiles/
+
+  cpu-profile:
+    name: CPU Profiling
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Run CPU profiling tests
+      run: |
+        mkdir -p cpu-profiles
+        
+        # Run tests with CPU profiling
+        go test -cpuprofile=cpu-profiles/base.cpu -bench=. -benchtime=30s ./...
+        
+        # Generate CPU profile analysis
+        go tool pprof -top cpu-profiles/base.cpu > cpu-profiles/cpu-top.txt
+        go tool pprof -list=. cpu-profiles/base.cpu > cpu-profiles/cpu-list.txt
+        
+    - name: Analyze CPU usage
+      run: |
+        # Generate CPU usage report
+        echo "# CPU Usage Analysis" > cpu-profiles/analysis.md
+        echo "" >> cpu-profiles/analysis.md
+        echo "## Top CPU Consumers" >> cpu-profiles/analysis.md
+        echo '```' >> cpu-profiles/analysis.md
+        head -20 cpu-profiles/cpu-top.txt >> cpu-profiles/analysis.md
+        echo '```' >> cpu-profiles/analysis.md
+        
+    - name: Upload CPU profiles
+      uses: actions/upload-artifact@v3
+      with:
+        name: cpu-profiles
+        path: cpu-profiles/
+
+  performance-regression:
+    name: Performance Regression Detection
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        
+    - name: Install benchstat
+      run: go install golang.org/x/perf/cmd/benchstat@latest
+      
+    - name: Run current benchmarks
+      run: |
+        go test -bench=. -count=5 -benchmem ./... > current.bench
+        
+    - name: Run baseline benchmarks
+      run: |
+        git fetch origin ${{ github.base_ref }}
+        git checkout origin/${{ github.base_ref }}
+        go test -bench=. -count=5 -benchmem ./... > baseline.bench
+        git checkout ${{ github.sha }}
+        
+    - name: Compare performance
+      run: |
+        echo "# Performance Regression Analysis" > regression-report.md
+        echo "" >> regression-report.md
+        echo '```' >> regression-report.md
+        benchstat baseline.bench current.bench >> regression-report.md
+        echo '```' >> regression-report.md
+        
+        # Check for significant regressions (>20% slower)
+        if benchstat -format=csv baseline.bench current.bench | awk -F',' '$7 > 1.2 {print}' | grep -q .; then
+          echo "" >> regression-report.md
+          echo "⚠️ **Performance regressions detected!**" >> regression-report.md
+          echo "" >> regression-report.md
+          echo "The following benchmarks show >20% performance degradation:" >> regression-report.md
+          echo '```' >> regression-report.md
+          benchstat -format=csv baseline.bench current.bench | awk -F',' '$7 > 1.2 {print}' >> regression-report.md
+          echo '```' >> regression-report.md
+        fi
+        
+    - name: Comment on PR
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('regression-report.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });

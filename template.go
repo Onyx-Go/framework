@@ -174,12 +174,15 @@ func (te *TemplateEngine) HasTemplate(templateName string) bool {
 	return exists
 }
 
-func (c *Context) View(templateName string, data ViewData) error {
-	if c.app.templateEngine == nil {
+func RenderView(c Context, templateName string, data ViewData) error {
+	// Use global template engine since Application interface doesn't expose TemplateEngine
+	// TODO: Extend Application interface to provide access to TemplateEngine
+	engine := GetGlobalTemplateEngine()
+	if engine == nil {
 		return fmt.Errorf("template engine not configured")
 	}
 	
-	html, err := c.app.templateEngine.Render(templateName, data)
+	html, err := engine.Render(templateName, data)
 	if err != nil {
 		return err
 	}
@@ -187,15 +190,31 @@ func (c *Context) View(templateName string, data ViewData) error {
 	return c.HTML(200, html)
 }
 
-func (c *Context) ViewWithLayout(templateName, layoutName string, data ViewData) error {
-	if c.app.templateEngine == nil {
+func RenderViewWithLayout(c Context, templateName, layoutName string, data ViewData) error {
+	// Use global template engine since Application interface doesn't expose TemplateEngine
+	// TODO: Extend Application interface to provide access to TemplateEngine
+	engine := GetGlobalTemplateEngine()
+	if engine == nil {
 		return fmt.Errorf("template engine not configured")
 	}
 	
-	html, err := c.app.templateEngine.RenderWithLayout(templateName, layoutName, data)
+	html, err := engine.RenderWithLayout(templateName, layoutName, data)
 	if err != nil {
 		return err
 	}
 	
 	return c.HTML(200, html)
+}
+
+// Global template engine instance
+var globalTemplateEngine *TemplateEngine
+
+// GetGlobalTemplateEngine returns the global template engine
+func GetGlobalTemplateEngine() *TemplateEngine {
+	return globalTemplateEngine
+}
+
+// SetGlobalTemplateEngine sets the global template engine
+func SetGlobalTemplateEngine(engine *TemplateEngine) {
+	globalTemplateEngine = engine
 }

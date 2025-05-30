@@ -381,27 +381,25 @@ func ListenForEventFunc(eventName string, listenerFunc ListenerFunc) {
 	}
 }
 
-func (c *Context) DispatchEvent(event Event) error {
-	dispatcher, _ := c.app.Container().Make("events")
-	if ed, ok := dispatcher.(EventDispatcher); ok {
-		return ed.Dispatch(event)
-	}
-	return fmt.Errorf("event dispatcher not configured")
+func DispatchEventWithContext(c Context, event Event) error {
+	// For now, use the global dispatcher since the Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container/EventDispatcher
+	return DispatchEvent(event)
 }
 
 func EventMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		event := NewBaseEvent("request.received")
-		c.DispatchEvent(event)
+		DispatchEventWithContext(c, event)
 		
 		err := c.Next()
 		
 		if err != nil {
 			errorEvent := NewBaseEvent("request.failed")
-			c.DispatchEvent(errorEvent)
+			DispatchEventWithContext(c, errorEvent)
 		} else {
 			successEvent := NewBaseEvent("request.completed")
-			c.DispatchEvent(successEvent)
+			DispatchEventWithContext(c, successEvent)
 		}
 		
 		return err

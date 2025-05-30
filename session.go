@@ -263,7 +263,7 @@ func NewSessionManager(handler SessionHandler) *SessionManager {
 	}
 }
 
-func (sm *SessionManager) StartSession(c *Context) (Session, error) {
+func (sm *SessionManager) StartSession(c Context) (Session, error) {
 	sessionID := sm.getSessionID(c)
 	if sessionID == "" {
 		sessionID = generateSessionID()
@@ -302,7 +302,7 @@ func (sm *SessionManager) StartSession(c *Context) (Session, error) {
 	return session, nil
 }
 
-func (sm *SessionManager) getSessionID(c *Context) string {
+func (sm *SessionManager) getSessionID(c Context) string {
 	cookie, err := c.Cookie(sm.cookieName)
 	if err != nil {
 		return ""
@@ -325,7 +325,7 @@ func deserializeSessionData(data []byte) (map[string]interface{}, error) {
 }
 
 func SessionMiddleware(sm *SessionManager) MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		session, err := sm.StartSession(c)
 		if err != nil {
 			return err
@@ -343,8 +343,8 @@ func SessionMiddleware(sm *SessionManager) MiddlewareFunc {
 	}
 }
 
-func (c *Context) Session() Session {
-	if session := c.Get("session"); session != nil {
+func GetSession(c Context) Session {
+	if session, exists := c.Get("session"); exists {
 		if s, ok := session.(Session); ok {
 			return s
 		}

@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	httpInternal "github.com/onyx-go/framework/internal/http"
+	contextImpl "github.com/onyx-go/framework/internal/http/context"
 )
 
 // APIVersion represents an API version configuration
@@ -56,12 +59,12 @@ type APIVersionManager struct {
 
 // VersionExtractor extracts version from request
 type VersionExtractor interface {
-	ExtractVersion(c *Context) string
+	ExtractVersion(c Context) string
 }
 
 // DeprecationHandler handles deprecated version access
 type DeprecationHandler interface {
-	HandleDeprecated(c *Context, version *APIVersion) error
+	HandleDeprecated(c Context, version *APIVersion) error
 }
 
 // NewAPIVersionManager creates a new API version manager
@@ -236,7 +239,7 @@ func (vm *APIVersionManager) EOLVersion(version string) error {
 }
 
 // ExtractRequestVersion extracts version from request context
-func (vm *APIVersionManager) ExtractRequestVersion(c *Context) string {
+func (vm *APIVersionManager) ExtractRequestVersion(c Context) string {
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
 	
@@ -251,7 +254,7 @@ func (vm *APIVersionManager) ExtractRequestVersion(c *Context) string {
 
 // CreateVersionMiddleware creates middleware for version handling
 func (vm *APIVersionManager) CreateVersionMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+	return func(c Context) error {
 		// Extract version from request
 		requestedVersion := vm.ExtractRequestVersion(c)
 		
@@ -262,8 +265,8 @@ func (vm *APIVersionManager) CreateVersionMiddleware() MiddlewareFunc {
 			if fallbackVersion := vm.findClosestVersion(requestedVersion); fallbackVersion != "" {
 				version, exists = vm.GetVersion(fallbackVersion)
 				if exists {
-					c.Header("API-Version-Used", fallbackVersion)
-					c.Header("API-Version-Requested", requestedVersion)
+					c.SetHeader("API-Version-Used", fallbackVersion)
+					c.SetHeader("API-Version-Requested", requestedVersion)
 				}
 			}
 			
@@ -285,15 +288,15 @@ func (vm *APIVersionManager) CreateVersionMiddleware() MiddlewareFunc {
 		}
 		
 		// Set version info in context
-		c.data["api_version"] = version.Version
-		c.data["api_version_info"] = version
+		c.Set("api_version", version.Version)
+		c.Set("api_version_info", version)
 		
 		// Set response headers
-		c.Header("API-Version", version.Version)
+		c.SetHeader("API-Version", version.Version)
 		if version.Deprecated {
-			c.Header("API-Deprecated", "true")
+			c.SetHeader("API-Deprecated", "true")
 			if version.EOLDate != nil {
-				c.Header("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
+				c.SetHeader("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
 			}
 		}
 		
@@ -372,7 +375,7 @@ func (vr *VersionedRouter) Version(version string) *Router {
 }
 
 // Route routes request to the appropriate version
-func (vr *VersionedRouter) Route(c *Context) error {
+func (vr *VersionedRouter) Route(c Context) error {
 	version := vr.manager.ExtractRequestVersion(c)
 	
 	router, exists := vr.routers[version]
@@ -381,7 +384,7 @@ func (vr *VersionedRouter) Route(c *Context) error {
 	}
 	
 	// Delegate to version-specific router
-	router.ServeHTTP(c.ResponseWriter, c.Request)
+	router.ServeHTTP(c.ResponseWriter(), c.Request())
 	return nil
 }
 
@@ -391,16 +394,16 @@ func (vr *VersionedRouter) Route(c *Context) error {
 type DefaultVersionExtractor struct{}
 
 // ExtractVersion extracts version from request
-func (dve *DefaultVersionExtractor) ExtractVersion(c *Context) string {
+func (dve *DefaultVersionExtractor) ExtractVersion(c Context) string {
 	// 1. Try path-based version (e.g., /api/v1/users)
-	path := c.Request.URL.Path
+	path := c.Request().URL.Path
 	re := regexp.MustCompile(`^/api/v(\d+(?:\.\d+)?)/`)
 	if matches := re.FindStringSubmatch(path); len(matches) > 1 {
 		return "v" + matches[1]
 	}
 	
 	// 2. Try header-based version
-	if version := c.GetHeader("API-Version"); version != "" {
+	if version := c.Header("API-Version"); version != "" {
 		return version
 	}
 	
@@ -410,7 +413,7 @@ func (dve *DefaultVersionExtractor) ExtractVersion(c *Context) string {
 	}
 	
 	// 4. Try Accept header versioning (e.g., application/vnd.api+json;version=1)
-	accept := c.GetHeader("Accept")
+	accept := c.Header("Accept")
 	if accept != "" {
 		re := regexp.MustCompile(`version=(\d+(?:\.\d+)?)`)
 		if matches := re.FindStringSubmatch(accept); len(matches) > 1 {
@@ -427,8 +430,8 @@ type HeaderVersionExtractor struct {
 }
 
 // ExtractVersion extracts version from header
-func (hve *HeaderVersionExtractor) ExtractVersion(c *Context) string {
-	return c.GetHeader(hve.HeaderName)
+func (hve *HeaderVersionExtractor) ExtractVersion(c Context) string {
+	return c.Header(hve.HeaderName)
 }
 
 // PathVersionExtractor extracts version from path only
@@ -437,8 +440,8 @@ type PathVersionExtractor struct {
 }
 
 // ExtractVersion extracts version from path
-func (pve *PathVersionExtractor) ExtractVersion(c *Context) string {
-	path := c.Request.URL.Path
+func (pve *PathVersionExtractor) ExtractVersion(c Context) string {
+	path := c.Request().URL.Path
 	if matches := pve.Pattern.FindStringSubmatch(path); len(matches) > 1 {
 		return matches[1]
 	}
@@ -451,19 +454,19 @@ func (pve *PathVersionExtractor) ExtractVersion(c *Context) string {
 type DefaultDeprecationHandler struct{}
 
 // HandleDeprecated handles deprecated version access
-func (ddh *DefaultDeprecationHandler) HandleDeprecated(c *Context, version *APIVersion) error {
+func (ddh *DefaultDeprecationHandler) HandleDeprecated(c Context, version *APIVersion) error {
 	// Set deprecation headers
-	c.Header("API-Deprecated", "true")
-	c.Header("API-Deprecation-Date", version.DeprecatedAt.Format(time.RFC3339))
+	c.SetHeader("API-Deprecated", "true")
+	c.SetHeader("API-Deprecation-Date", version.DeprecatedAt.Format(time.RFC3339))
 	
 	if version.EOLDate != nil {
-		c.Header("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
+		c.SetHeader("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
 		
 		// Add warning if EOL is soon
 		daysUntilEOL := time.Until(*version.EOLDate).Hours() / 24
 		if daysUntilEOL <= 30 {
 			warning := fmt.Sprintf("API version %s will be discontinued in %.0f days", version.Version, daysUntilEOL)
-			c.Header("Warning", warning)
+			c.SetHeader("Warning", warning)
 		}
 	}
 	
@@ -471,9 +474,9 @@ func (ddh *DefaultDeprecationHandler) HandleDeprecated(c *Context, version *APIV
 	if logger := Log(); logger != nil {
 		logger.Warn("Deprecated API version accessed", map[string]interface{}{
 			"version":    version.Version,
-			"user_agent": c.UserAgent(),
+			"user_agent": c.Header("User-Agent"),
 			"remote_ip":  c.RemoteIP(),
-			"path":       c.Request.URL.Path,
+			"path":       c.Request().URL.Path,
 		})
 	}
 	
@@ -484,7 +487,7 @@ func (ddh *DefaultDeprecationHandler) HandleDeprecated(c *Context, version *APIV
 type StrictDeprecationHandler struct{}
 
 // HandleDeprecated blocks deprecated version access
-func (sdh *StrictDeprecationHandler) HandleDeprecated(c *Context, version *APIVersion) error {
+func (sdh *StrictDeprecationHandler) HandleDeprecated(c Context, version *APIVersion) error {
 	return NewHTTPError(410, fmt.Sprintf("API version %s is deprecated and no longer available", version.Version))
 }
 
@@ -494,14 +497,14 @@ type LoggingDeprecationHandler struct {
 }
 
 // HandleDeprecated logs and optionally blocks deprecated version access
-func (ldh *LoggingDeprecationHandler) HandleDeprecated(c *Context, version *APIVersion) error {
+func (ldh *LoggingDeprecationHandler) HandleDeprecated(c Context, version *APIVersion) error {
 	// Always log
 	if logger := Log(); logger != nil {
 		logger.Warn("Deprecated API version accessed", map[string]interface{}{
 			"version":     version.Version,
-			"user_agent":  c.UserAgent(),
+			"user_agent":  c.Header("User-Agent"),
 			"remote_ip":   c.RemoteIP(),
-			"path":        c.Request.URL.Path,
+			"path":        c.Request().URL.Path,
 			"deprecated_at": version.DeprecatedAt,
 			"eol_date":    version.EOLDate,
 		})
@@ -513,12 +516,12 @@ func (ldh *LoggingDeprecationHandler) HandleDeprecated(c *Context, version *APIV
 	}
 	
 	// Set headers
-	c.Header("API-Deprecated", "true")
+	c.SetHeader("API-Deprecated", "true")
 	if version.DeprecatedAt != nil {
-		c.Header("API-Deprecation-Date", version.DeprecatedAt.Format(time.RFC3339))
+		c.SetHeader("API-Deprecation-Date", version.DeprecatedAt.Format(time.RFC3339))
 	}
 	if version.EOLDate != nil {
-		c.Header("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
+		c.SetHeader("API-EOL-Date", version.EOLDate.Format(time.RFC3339))
 	}
 	
 	return nil
@@ -548,7 +551,7 @@ func NewVersionedRouteGroup(manager *APIVersionManager, version string, router *
 // Use adds middleware to the versioned group
 func (vg *VersionedRouteGroup) Use(middleware ...MiddlewareFunc) {
 	vg.middleware = append(vg.middleware, middleware...)
-	vg.baseGroup.router.Use(middleware...)
+	// RouteGroup handles internal conversion, no need to call baseGroup.Use
 }
 
 // Get adds a GET route to the versioned group
@@ -579,6 +582,24 @@ func (vg *VersionedRouteGroup) Delete(pattern string, handler HandlerFunc, middl
 func (vg *VersionedRouteGroup) Patch(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
 	allMiddleware := append(vg.middleware, middleware...)
 	vg.baseGroup.Patch(pattern, handler, allMiddleware...)
+}
+
+// Helper functions for VersionedRouteGroup
+func (vg *VersionedRouteGroup) convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
+	return func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+}
+
+func (vg *VersionedRouteGroup) convertMiddleware(middleware ...MiddlewareFunc) []httpInternal.MiddlewareFunc {
+	var converted []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		convertedMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		converted = append(converted, convertedMw)
+	}
+	return converted
 }
 
 // Utility functions
@@ -612,8 +633,8 @@ func CreateDeprecatedAPIVersionConfig(version, name, description string, eolDate
 }
 
 // GetVersionFromContext extracts the API version from context
-func GetVersionFromContext(c *Context) string {
-	if version, exists := c.data["api_version"]; exists {
+func GetVersionFromContext(c Context) string {
+	if version, exists := c.Get("api_version"); exists {
 		if v, ok := version.(string); ok {
 			return v
 		}
@@ -622,8 +643,8 @@ func GetVersionFromContext(c *Context) string {
 }
 
 // GetVersionInfoFromContext extracts the API version info from context
-func GetVersionInfoFromContext(c *Context) *APIVersion {
-	if versionInfo, exists := c.data["api_version_info"]; exists {
+func GetVersionInfoFromContext(c Context) *APIVersion {
+	if versionInfo, exists := c.Get("api_version_info"); exists {
 		if v, ok := versionInfo.(*APIVersion); ok {
 			return v
 		}
@@ -632,7 +653,7 @@ func GetVersionInfoFromContext(c *Context) *APIVersion {
 }
 
 // IsVersionDeprecated checks if the current request version is deprecated
-func IsVersionDeprecated(c *Context) bool {
+func IsVersionDeprecated(c Context) bool {
 	if versionInfo := GetVersionInfoFromContext(c); versionInfo != nil {
 		return versionInfo.Deprecated
 	}

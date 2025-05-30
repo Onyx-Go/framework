@@ -1,0 +1,156 @@
+name: ✨ Feature Request
+description: Suggest a new feature for the Onyx Framework
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand your request.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I have searched existing issues to ensure this feature hasn't been requested before
+          required: true
+        - label: I have checked the roadmap to see if this is already planned
+          required: true
+        - label: I believe this feature would benefit the broader Onyx Framework community
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: A clear and concise description of the feature you'd like to see
+      placeholder: Briefly describe the feature you want...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What pain point does it address?
+      placeholder: Describe the problem this feature would solve...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution in detail
+      placeholder: |
+        How should this feature work? Provide as much detail as possible:
+        - API design
+        - Configuration options
+        - Integration points
+        - Examples
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternative solutions have you considered?
+      placeholder: Describe any alternative approaches you've thought about...
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Usage Examples
+      description: Provide examples of how this feature would be used
+      render: go
+      placeholder: |
+        // Example 1: Basic usage
+        app.SomeNewFeature(config)
+        
+        // Example 2: Advanced usage
+        app.SomeNewFeature(advancedConfig)
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Low - Nice to have
+        - Medium - Would significantly improve my workflow
+        - High - Essential for my use case
+        - Critical - Blocking my project
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component would this feature affect?
+      options:
+        - Router
+        - Middleware
+        - Database/ORM
+        - Authentication
+        - Configuration
+        - Logging
+        - CLI Tool
+        - Templates
+        - Cache
+        - Queue
+        - Validation
+        - Security
+        - Testing
+        - Documentation
+        - Core Framework
+        - New Component
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Breaking Changes
+      description: Would this feature require breaking changes?
+      options:
+        - label: This feature would require breaking changes to the public API
+        - label: This feature could be implemented without breaking changes
+        - label: I'm not sure about the impact on existing APIs
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Do you have ideas about how this could be implemented?
+      placeholder: |
+        If you have thoughts on implementation:
+        - Architecture considerations
+        - Technical challenges
+        - Dependencies required
+        - Performance implications
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to contribute to implementing this feature
+        - label: I would be willing to help with testing this feature
+        - label: I would be willing to help with documentation for this feature
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or references about the feature request
+      placeholder: |
+        Any additional information:
+        - Links to similar features in other frameworks
+        - References to relevant specifications
+        - Screenshots or mockups
+        - Related issues or discussions

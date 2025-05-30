@@ -3,11 +3,178 @@ package onyx
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"reflect"
+	"runtime"
+	"strings"
 	"time"
+
+	httpInternal "github.com/onyx-go/framework/internal/http"
+	contextImpl "github.com/onyx-go/framework/internal/http/context"
+	routerImpl "github.com/onyx-go/framework/internal/http/router"
 )
 
+// Wrapper types for backward compatibility
+type Context = *contextImpl.Context
+type HandlerFunc func(Context) error  
+type MiddlewareFunc func(Context) error
+
+// Router wrapper
+type Router struct {
+	*routerImpl.Router
+}
+
+// Router wrapper methods for backward compatibility
+func (r *Router) Get(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.GET(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Post(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.POST(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Put(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.PUT(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Delete(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.DELETE(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Patch(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.PATCH(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Options(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.OPTIONS(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Head(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.HEAD(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Any(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	r.ANY(pattern, convertHandler(handler), convertMiddleware(middleware...)...)
+}
+
+func (r *Router) Group(prefix string, middleware ...MiddlewareFunc) *RouteGroup {
+	// Convert middleware to internal types
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	internalGroup := r.Router.Group(prefix, internalMiddleware...).(*routerImpl.RouteGroup)
+	return wrapRouteGroup(internalGroup)
+}
+
+// RouteGroup wrapper  
+type RouteGroup struct {
+	*routerImpl.RouteGroup
+	prefix string
+}
+
+type Route = httpInternal.Route
+
+// RouteGroup compatibility methods
+func (rg *RouteGroup) Get(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Get(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Post(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Post(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Put(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Put(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Delete(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Delete(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Patch(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.PATCH(pattern, internalHandler, internalMiddleware...)
+}
+
+// Initialize the prefix field when creating RouteGroup wrappers
+func wrapRouteGroup(internal *routerImpl.RouteGroup) *RouteGroup {
+	return &RouteGroup{
+		RouteGroup: internal,
+		prefix:     internal.Prefix_,
+	}
+}
+
 type Application struct {
-	*Router
+	router         httpInternal.Router
 	server         *http.Server
 	config         *Config
 	container      *Container
@@ -15,14 +182,14 @@ type Application struct {
 }
 
 func New() *Application {
-	router := NewRouter()
+	r := routerImpl.NewRouter()
 	app := &Application{
-		Router:    router,
+		router:    r,
 		config:    NewConfig(),
 		container: NewContainer(),
 	}
 	
-	router.app = app
+	r.SetApplication(app)
 	
 	// Setup default logging configuration
 	config := LoggingConfig{
@@ -65,9 +232,16 @@ func New() *Application {
 	// Setup error handling
 	SetupErrorHandling(false) // Set to true for debug mode
 	
-	app.Use(LoggerMiddleware())
-	app.Use(RecoveryMiddleware())
-	app.Use(ErrorHandlerMiddleware(GetErrorHandler()))
+	// Use internal middleware directly since they already use the correct interface
+	app.router.Use(LoggerMiddleware())
+	app.router.Use(RecoveryMiddleware())
+	
+	// Convert old-style error middleware to new interface
+	errorMiddleware := ErrorHandlerMiddleware(GetErrorHandler())
+	convertedErrorMiddleware := func(c httpInternal.Context) error {
+		return errorMiddleware(c.(*contextImpl.Context))
+	}
+	app.router.Use(convertedErrorMiddleware)
 	
 	return app
 }
@@ -75,7 +249,7 @@ func New() *Application {
 func (app *Application) Start(address string) error {
 	app.server = &http.Server{
 		Addr:         address,
-		Handler:      app.Router,
+		Handler:      app.router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -98,8 +272,313 @@ func (app *Application) SetTemplateEngine(viewsPath, layoutsPath string) error {
 	return app.templateEngine.LoadTemplates()
 }
 
-func (app *Application) TemplateEngine() *TemplateEngine {
+func (app *Application) GetTemplateEngine() *TemplateEngine {
 	return app.templateEngine
+}
+
+// Router delegation methods
+func (app *Application) GET(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.GET(pattern, handler, middleware...)
+}
+
+func (app *Application) POST(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.POST(pattern, handler, middleware...)
+}
+
+func (app *Application) PUT(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.PUT(pattern, handler, middleware...)
+}
+
+func (app *Application) DELETE(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.DELETE(pattern, handler, middleware...)
+}
+
+func (app *Application) PATCH(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.PATCH(pattern, handler, middleware...)
+}
+
+func (app *Application) OPTIONS(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.OPTIONS(pattern, handler, middleware...)
+}
+
+func (app *Application) HEAD(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.HEAD(pattern, handler, middleware...)
+}
+
+func (app *Application) ANY(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.ANY(pattern, handler, middleware...)
+}
+
+func (app *Application) Use(middleware ...httpInternal.MiddlewareFunc) {
+	app.router.Use(middleware...)
+}
+
+// UseMiddleware accepts old-style middleware for backward compatibility
+func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
+	// Check if this is compression middleware and handle it specially
+	if config, isCompression := extractCompressionConfig(middleware); isCompression {
+		// Use new-style compression middleware with extracted config
+		if config != nil {
+			app.router.Use(NewStyleCompressionMiddleware(*config))
+		} else {
+			app.router.Use(NewStyleCompressionMiddleware())
+		}
+		return
+	}
+	
+	// Convert old middleware to new style
+	converted := func(c httpInternal.Context) error {
+		return middleware(c.(*contextImpl.Context))
+	}
+	app.router.Use(converted)
+}
+
+// extractCompressionConfig attempts to extract config from compression middleware
+func extractCompressionConfig(middleware MiddlewareFunc) (*CompressionConfig, bool) {
+	// Use reflection to check the function name
+	funcValue := reflect.ValueOf(middleware)
+	
+	// Get function info for debugging
+	if funcValue.Kind() == reflect.Func {
+		funcPtr := funcValue.Pointer()
+		funcInfo := runtime.FuncForPC(funcPtr)
+		if funcInfo != nil {
+			funcName := funcInfo.Name()
+			// Check if it's one of our compression middleware functions
+			if strings.Contains(funcName, "CompressionMiddleware") || 
+			   strings.Contains(funcName, "GzipMiddleware") ||
+			   strings.Contains(funcName, "CustomCompressionMiddleware") {
+				// Try to extract the config by calling the middleware with a test context
+				config := tryExtractConfig(middleware)
+				return config, true
+			}
+		}
+	}
+	
+	return nil, false
+}
+
+// tryExtractConfig attempts to extract compression config from the registry
+func tryExtractConfig(middleware MiddlewareFunc) *CompressionConfig {
+	// Get the function pointer and look it up in the registry
+	funcPtr := reflect.ValueOf(middleware).Pointer()
+	
+	compressionConfigMutex.RLock()
+	config, exists := compressionConfigs[funcPtr]
+	compressionConfigMutex.RUnlock()
+	
+	if exists {
+		return &config
+	}
+	return nil
+}
+
+// configExtractorWriter is a special ResponseWriter that extracts compression config
+type configExtractorWriter struct {
+	headers         http.Header
+	extractedConfig *CompressionConfig
+}
+
+func (w *configExtractorWriter) Header() http.Header {
+	if w.headers == nil {
+		w.headers = make(http.Header)
+	}
+	return w.headers
+}
+
+func (w *configExtractorWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (w *configExtractorWriter) WriteHeader(int) {}
+
+// isCompressionMiddleware detects if middleware is compression-related
+func isCompressionMiddleware(middleware MiddlewareFunc) bool {
+	// Use reflection to check the function name or type
+	funcValue := reflect.ValueOf(middleware)
+	_ = funcValue.Type() // Unused variable
+	
+	// Get function info for debugging
+	if funcValue.Kind() == reflect.Func {
+		funcPtr := funcValue.Pointer()
+		funcInfo := runtime.FuncForPC(funcPtr)
+		if funcInfo != nil {
+			funcName := funcInfo.Name()
+			println("DEBUG: Checking middleware function:", funcName)
+			// Check if it's one of our compression middleware functions
+			if strings.Contains(funcName, "CompressionMiddleware") || 
+			   strings.Contains(funcName, "GzipMiddleware") ||
+			   strings.Contains(funcName, "CustomCompressionMiddleware") {
+				println("DEBUG: isCompressionMiddleware result: true (by name)")
+				return true
+			}
+		}
+	}
+	
+	// Fallback: Test the middleware with a dummy context
+	dummyWriter := &testResponseWriter{}
+	dummyRequest := &http.Request{
+		Header: make(http.Header),
+		URL:    &url.URL{Path: "/test"},
+	}
+	dummyRequest.Header.Set("Accept-Encoding", "gzip")
+	
+	dummyContext := NewContext(dummyWriter, dummyRequest, nil)
+	
+	// Add a large response that would trigger compression
+	dummyContext.String(200, strings.Repeat("test content ", 100))
+	
+	// Call the middleware and check if it modifies compression-related headers
+	middleware(dummyContext)
+	
+	// Check if compression headers were set
+	isCompression := dummyWriter.hasCompressionHeaders()
+	println("DEBUG: isCompressionMiddleware result:", isCompression, "(by test)")
+	return isCompression
+}
+
+// testResponseWriter for testing middleware behavior
+type testResponseWriter struct {
+	headers http.Header
+}
+
+func (t *testResponseWriter) Header() http.Header {
+	if t.headers == nil {
+		t.headers = make(http.Header)
+	}
+	return t.headers
+}
+
+func (t *testResponseWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (t *testResponseWriter) WriteHeader(int) {}
+
+func (t *testResponseWriter) hasCompressionHeaders() bool {
+	return t.headers.Get("Content-Encoding") != "" || t.headers.Get("Vary") != ""
+}
+
+
+
+func (app *Application) Group(prefix string, middleware ...httpInternal.MiddlewareFunc) httpInternal.RouteGroup {
+	return app.router.Group(prefix, middleware...)
+}
+
+func (app *Application) SetNotFound(handler httpInternal.HandlerFunc) {
+	app.router.SetNotFound(handler)
+}
+
+func (app *Application) GetRoutes() []httpInternal.Route {
+	return app.router.GetRoutes()
+}
+
+// Backward compatibility methods with lowercase names
+func (app *Application) Get(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.GET(pattern, handler, middleware...)
+}
+
+func (app *Application) Post(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.POST(pattern, handler, middleware...)
+}
+
+func (app *Application) Put(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.PUT(pattern, handler, middleware...)
+}
+
+func (app *Application) Delete(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.DELETE(pattern, handler, middleware...)
+}
+
+func (app *Application) Patch(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.PATCH(pattern, handler, middleware...)
+}
+
+func (app *Application) Options(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	app.router.OPTIONS(pattern, handler, middleware...)
+}
+
+// Handlers with old-style function signatures for backward compatibility
+func (app *Application) GetHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Get(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PostHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Post(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PutHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Put(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) DeleteHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Delete(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PatchHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Patch(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) OptionsHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Options(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) HeadHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.HEAD(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) AnyHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.ANY(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+// Helper functions to convert between old and new function types
+func (app *Application) convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
+	return func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+}
+
+func (app *Application) convertMiddleware(middleware ...MiddlewareFunc) []httpInternal.MiddlewareFunc {
+	var converted []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		convertedMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		converted = append(converted, convertedMw)
+	}
+	return converted
+}
+
+// Router property for backward compatibility  
+func (app *Application) Router() *Router {
+	return &Router{Router: app.router.(*routerImpl.Router)}
+}
+
+// Constructor functions for backward compatibility
+func NewRouter() *Router {
+	return &Router{Router: routerImpl.NewRouter()}
+}
+
+func NewContext(w http.ResponseWriter, r *http.Request, app httpInternal.Application) Context {
+	return contextImpl.NewContext(w, r, app)
+}
+
+// Package-level converter functions for backward compatibility
+func convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
+	return func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+}
+
+func convertMiddleware(middleware ...MiddlewareFunc) []httpInternal.MiddlewareFunc {
+	var converted []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		convertedMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		converted = append(converted, convertedMw)
+	}
+	return converted
 }
 
 func (app *Application) ConfigureLogging(config LoggingConfig) error {
@@ -114,12 +593,96 @@ func (app *Application) SetDebug(debug bool) {
 	SetupErrorHandling(debug)
 }
 
-func (app *Application) ErrorHandler() *ErrorHandler {
+func (app *Application) GetErrorHandler() *ErrorHandler {
 	return GetErrorHandler()
 }
 
-func LoggerMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+// HTTP Application interface implementation methods
+func (app *Application) ErrorHandler() httpInternal.ErrorHandler {
+	return &HTTPErrorHandlerAdapter{handler: GetErrorHandler()}
+}
+
+func (app *Application) TemplateEngine() httpInternal.TemplateEngine {
+	if app.templateEngine != nil {
+		return &TemplateEngineAdapter{engine: app.templateEngine}
+	}
+	return nil
+}
+
+// Adapter types to bridge old interfaces with new HTTP interfaces
+type HTTPErrorHandlerAdapter struct {
+	handler *ErrorHandler
+}
+
+
+func (a *HTTPErrorHandlerAdapter) Handle(ctx httpInternal.Context, err error) {
+	// Check if client accepts JSON
+	acceptHeader := ctx.Request().Header.Get("Accept")
+	wantsJSON := strings.Contains(acceptHeader, "application/json")
+	
+	var statusCode int
+	var message string
+	var httpErr *HTTPError
+	
+	if he, ok := err.(*HTTPError); ok {
+		httpErr = he
+		statusCode = he.Code
+		message = he.Message
+	} else {
+		statusCode = 500
+		message = "Internal Server Error"
+		httpErr = NewHTTPError(500, message)
+	}
+	
+	if wantsJSON {
+		// Return JSON error response
+		errorData := map[string]interface{}{
+			"status_code": statusCode,
+			"message":     message,
+			"type":        "error",
+		}
+		
+		// Add context fields directly to error data if available
+		if httpErr.Context != nil {
+			for key, value := range httpErr.Context {
+				errorData[key] = value
+			}
+		}
+		
+		errorResponse := map[string]interface{}{
+			"error": errorData,
+		}
+		
+		ctx.JSON(statusCode, errorResponse)
+	} else {
+		// Return plain text response
+		ctx.String(statusCode, message)
+	}
+}
+
+type TemplateEngineAdapter struct {
+	engine *TemplateEngine
+}
+
+func (a *TemplateEngineAdapter) Render(template string, data interface{}) (string, error) {
+	// Convert interface{} to ViewData
+	var viewData ViewData
+	if data != nil {
+		if vd, ok := data.(ViewData); ok {
+			viewData = vd
+		} else if m, ok := data.(map[string]interface{}); ok {
+			viewData = ViewData(m)
+		} else {
+			viewData = ViewData{"data": data}
+		}
+	} else {
+		viewData = ViewData{}
+	}
+	return a.engine.Render(template, viewData)
+}
+
+func LoggerMiddleware() httpInternal.MiddlewareFunc {
+	return func(c httpInternal.Context) error {
 		start := time.Now()
 		
 		err := c.Next()
@@ -136,7 +699,7 @@ func LoggerMiddleware() MiddlewareFunc {
 		logContext := map[string]interface{}{
 			"method":       c.Method(),
 			"url":          c.URL(),
-			"user_agent":   c.UserAgent(),
+			"user_agent":   c.Header("User-Agent"),
 			"remote_ip":    c.RemoteIP(),
 			"duration_ms":  duration.Milliseconds(),
 			"status_code":  status,
@@ -157,8 +720,8 @@ func LoggerMiddleware() MiddlewareFunc {
 	}
 }
 
-func RecoveryMiddleware() MiddlewareFunc {
-	return func(c *Context) error {
+func RecoveryMiddleware() httpInternal.MiddlewareFunc {
+	return func(c httpInternal.Context) error {
 		defer func() {
 			if err := recover(); err != nil {
 				// Create panic error with context
@@ -169,7 +732,7 @@ func RecoveryMiddleware() MiddlewareFunc {
 					"panic":      fmt.Sprintf("%v", err),
 					"method":     c.Method(),
 					"url":        c.URL(),
-					"user_agent": c.UserAgent(),
+					"user_agent": c.Header("User-Agent"),
 					"remote_ip":  c.RemoteIP(),
 				}
 				
@@ -179,7 +742,9 @@ func RecoveryMiddleware() MiddlewareFunc {
 				httpErr := NewHTTPErrorWithContext(500, "Internal Server Error", panicContext)
 				httpErr.Internal = panicErr
 				
-				GetErrorHandler().Handle(c, httpErr)
+				// Use a temporary HTTP error handler adapter for interface conversion
+				adapter := &HTTPErrorHandlerAdapter{handler: GetErrorHandler()}
+				adapter.Handle(c, httpErr)
 				c.Abort()
 			}
 		}()
@@ -188,21 +753,21 @@ func RecoveryMiddleware() MiddlewareFunc {
 	}
 }
 
-func CORSMiddleware(origins ...string) MiddlewareFunc {
+func CORSMiddleware(origins ...string) httpInternal.MiddlewareFunc {
 	allowedOrigins := make(map[string]bool)
 	for _, origin := range origins {
 		allowedOrigins[origin] = true
 	}
 	
-	return func(c *Context) error {
-		origin := c.GetHeader("Origin")
+	return func(c httpInternal.Context) error {
+		origin := c.Header("Origin")
 		
 		if len(allowedOrigins) == 0 || allowedOrigins["*"] || allowedOrigins[origin] {
-			c.Header("Access-Control-Allow-Origin", origin)
+			c.SetHeader("Access-Control-Allow-Origin", origin)
 		}
 		
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.SetHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.SetHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		
 		if c.Method() == "OPTIONS" {
 			c.Status(204)

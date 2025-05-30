@@ -30,8 +30,17 @@ Thumbs.db
 # Go build artifacts
 /tmp/
 dist/
+build/
+coverage.out
+coverage.html
 
 # Compiled binaries
 onyx
 onyx-test
 *.exe
+
+# Profiling files
+*.prof
+
+# Vendor directory (if using vendoring)
+vendor/

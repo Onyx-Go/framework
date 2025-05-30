@@ -515,26 +515,18 @@ func (app *Application) SetGlobal() {
 	globalApp = app
 }
 
-func (c *Context) Dispatch(job Job) error {
-	queueManager, _ := c.app.Container().Make("queue")
-	if qm, ok := queueManager.(QueueManager); ok {
-		return qm.Push(job)
-	}
-	return fmt.Errorf("queue manager not configured")
+func DispatchJobWithContext(c Context, job Job) error {
+	// Use global functions since Application interface doesn't expose Container
+	// TODO: Extend Application interface to provide access to Container/QueueManager
+	return DispatchJob(job)
 }
 
-func (c *Context) DispatchOn(queue string, job Job) error {
-	queueManager, _ := c.app.Container().Make("queue")
-	if qm, ok := queueManager.(QueueManager); ok {
-		return qm.PushOn(queue, job)
-	}
-	return fmt.Errorf("queue manager not configured")
+func DispatchJobOnWithContext(c Context, queue string, job Job) error {
+	// Use global functions since Application interface doesn't expose Container
+	return DispatchJobOn(queue, job)
 }
 
-func (c *Context) DispatchLater(delay time.Duration, job Job) error {
-	queueManager, _ := c.app.Container().Make("queue")
-	if qm, ok := queueManager.(QueueManager); ok {
-		return qm.Later(delay, job)
-	}
-	return fmt.Errorf("queue manager not configured")
+func DispatchJobLaterWithContext(c Context, delay time.Duration, job Job) error {
+	// Use global functions since Application interface doesn't expose Container
+	return DispatchJobLater(delay, job)
 }
