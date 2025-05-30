@@ -76,6 +76,9 @@ type Router interface {
 	// Configuration
 	SetNotFound(handler HandlerFunc)
 	
+	// Route introspection
+	GetRoutes() []Route
+	
 	// HTTP server integration
 	http.Handler
 }

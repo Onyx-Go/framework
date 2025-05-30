@@ -582,18 +582,27 @@ func (rd *RouteDiscovery) DiscoverFromRouter() {
 	rd.mu.Lock()
 	defer rd.mu.Unlock()
 
-	// TODO: Implement route extraction with new interface-based router
-	// For now, skip auto-discovery from router routes since the interface doesn't expose them
-	// Auto-discovery will work through the middleware recording mechanism instead
+	// Get all routes from the router
+	routes := rd.router.GetRoutes()
 	
-	// Placeholder for future implementation that would need router interface extension
-	_ = rd.router // Suppress unused variable warning
-	
-	// The discovery will happen through the recordRoute method called by middleware
-	// which is a more reliable approach anyway
-	
-	// Process any manually recorded annotations (already in rd.annotations)
-	// No additional processing needed since routes are recorded via middleware
+	// Process each route
+	for _, route := range routes {
+		routeKey := fmt.Sprintf("%s %s", route.Method(), route.Pattern())
+		
+		// Record basic route information if not already documented
+		if _, exists := rd.annotations[routeKey]; !exists {
+			// Create basic documentation for the route
+			doc := &RouteDocumentation{
+				Summary:     fmt.Sprintf("%s %s", route.Method(), route.Pattern()),
+				Description: fmt.Sprintf("Auto-discovered %s endpoint", route.Method()),
+				Tags:        rd.extractTagsFromPattern(route.Pattern()),
+				Parameters:  rd.extractParametersFromRoute(route),
+				Responses:   rd.generateDefaultResponsesForRoute(route),
+			}
+			
+			rd.annotations[routeKey] = doc
+		}
+	}
 }
 
 // extractHandlerInfo extracts information from a handler function
@@ -688,4 +697,89 @@ func CreateDocumentationMiddleware(
 	}
 
 	return middleware
+}
+
+// Helper methods for route discovery
+
+// extractTagsFromPattern extracts tags from route pattern
+func (rd *RouteDiscovery) extractTagsFromPattern(pattern string) []string {
+	// Simple tag extraction from path segments
+	parts := strings.Split(strings.Trim(pattern, "/"), "/")
+	if len(parts) > 0 && parts[0] != "" {
+		// Use the first path segment as tag
+		return []string{strings.Title(parts[0])}
+	}
+	return []string{"Default"}
+}
+
+// extractParametersFromRoute extracts parameters from a route
+func (rd *RouteDiscovery) extractParametersFromRoute(route Route) []ParameterDoc {
+	var params []ParameterDoc
+	
+	for _, paramName := range route.ParamNames() {
+		param := ParameterDoc{
+			Name:        paramName,
+			In:          "path",
+			Type:        "string",
+			Required:    true,
+			Description: fmt.Sprintf("Path parameter: %s", paramName),
+		}
+		
+		// Try to infer type from pattern
+		if rd.isIntParameter(route.Pattern(), paramName) {
+			param.Type = "integer"
+		}
+		
+		params = append(params, param)
+	}
+	
+	return params
+}
+
+// generateDefaultResponsesForRoute generates default responses for a route
+func (rd *RouteDiscovery) generateDefaultResponsesForRoute(route Route) map[string]ResponseDoc {
+	responses := make(map[string]ResponseDoc)
+	
+	// Default success response based on method
+	switch strings.ToUpper(route.Method()) {
+	case "POST":
+		responses["201"] = ResponseDoc{
+			Description: "Created",
+			Schema: &OpenAPISchema{
+				Type: "object",
+				Properties: map[string]*OpenAPISchema{
+					"message": {Type: "string"},
+					"data":    {Type: "object"},
+				},
+			},
+		}
+	case "DELETE":
+		responses["204"] = ResponseDoc{
+			Description: "No Content",
+		}
+	default:
+		responses["200"] = ResponseDoc{
+			Description: "Success",
+			Schema: &OpenAPISchema{
+				Type: "object",
+				Properties: map[string]*OpenAPISchema{
+					"message": {Type: "string"},
+					"data":    {Type: "object"},
+				},
+			},
+		}
+	}
+	
+	// Common error responses
+	responses["400"] = ResponseDoc{Description: "Bad Request"}
+	responses["404"] = ResponseDoc{Description: "Not Found"}
+	responses["500"] = ResponseDoc{Description: "Internal Server Error"}
+	
+	return responses
+}
+
+// isIntParameter checks if a parameter is constrained to integers
+func (rd *RouteDiscovery) isIntParameter(pattern, paramName string) bool {
+	// Check if parameter has :int constraint
+	return strings.Contains(pattern, fmt.Sprintf("{%s:int}", paramName))
 }

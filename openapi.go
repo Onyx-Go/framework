@@ -358,10 +358,11 @@ func (b *OpenAPIBuilder) AddAPIKeyAuth(name, in string) *OpenAPIBuilder {
 func (b *OpenAPIBuilder) FromRouter(router *Router) *OpenAPIBuilder {
 	b.router = router
 	
-	// TODO: Implement route extraction with new interface-based router
-	// For now, skip auto-discovery from router routes since the interface doesn't expose them
-	// OpenAPI generation will need to work through documentation middleware recording instead
-	_ = router // Suppress unused variable warning
+	// Extract routes from the router and add them to the spec
+	routes := router.GetRoutes()
+	for _, route := range routes {
+		b.addRouteToSpec(route)
+	}
 	
 	b.spec.Components = b.components
 	return b

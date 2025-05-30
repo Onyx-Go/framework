@@ -216,6 +216,10 @@ func (m *mockContext) Cookie(name string) (*http.Cookie, error) {
 	return m.request.Cookie(name)
 }
 
+func (m *mockContext) PostForm(key string) string {
+	return m.request.PostFormValue(key)
+}
+
 // Test functions
 
 func TestTrimStringsMiddleware(t *testing.T) {

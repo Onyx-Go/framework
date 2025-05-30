@@ -229,21 +229,45 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // GetRoutes returns all registered routes (for debugging/introspection)
-func (r *Router) GetRoutes() []RouteInfo {
-	routes := make([]RouteInfo, len(r.routes))
+func (r *Router) GetRoutes() []httpInternal.Route {
+	routes := make([]httpInternal.Route, len(r.routes))
 	for i, route := range r.routes {
-		routes[i] = RouteInfo{
-			Method:     route.method,
-			Pattern:    route.pattern,
-			ParamNames: route.paramNames,
+		routes[i] = &routeInfo{
+			method:     route.method,
+			pattern:    route.pattern,
+			paramNames: route.paramNames,
+			handler:    route.handler,
+			middleware: route.middleware,
 		}
 	}
 	return routes
 }
 
-// RouteInfo provides information about a registered route
-type RouteInfo struct {
-	Method     string
-	Pattern    string
-	ParamNames []string
+// routeInfo implements the Route interface for introspection
+type routeInfo struct {
+	method     string
+	pattern    string
+	paramNames []string
+	handler    httpInternal.HandlerFunc
+	middleware []httpInternal.MiddlewareFunc
+}
+
+func (r *routeInfo) Method() string {
+	return r.method
+}
+
+func (r *routeInfo) Pattern() string {
+	return r.pattern
+}
+
+func (r *routeInfo) Handler() httpInternal.HandlerFunc {
+	return r.handler
+}
+
+func (r *routeInfo) Middleware() []httpInternal.MiddlewareFunc {
+	return r.middleware
+}
+
+func (r *routeInfo) ParamNames() []string {
+	return r.paramNames
 }

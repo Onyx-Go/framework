@@ -306,13 +306,13 @@ func TestGetRoutes(t *testing.T) {
 	}
 	
 	// Check first route
-	if routes[0].Method != "GET" {
-		t.Errorf("expected method GET, got %s", routes[0].Method)
+	if routes[0].Method() != "GET" {
+		t.Errorf("expected method GET, got %s", routes[0].Method())
 	}
-	if routes[0].Pattern != "/users/{id:int}" {
-		t.Errorf("expected pattern /users/{id:int}, got %s", routes[0].Pattern)
+	if routes[0].Pattern() != "/users/{id:int}" {
+		t.Errorf("expected pattern /users/{id:int}, got %s", routes[0].Pattern())
 	}
-	if len(routes[0].ParamNames) != 1 || routes[0].ParamNames[0] != "id" {
-		t.Errorf("expected param names [id], got %v", routes[0].ParamNames)
+	if len(routes[0].ParamNames()) != 1 || routes[0].ParamNames()[0] != "id" {
+		t.Errorf("expected param names [id], got %v", routes[0].ParamNames())
 	}
 }

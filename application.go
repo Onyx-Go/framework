@@ -327,6 +327,10 @@ func (app *Application) SetNotFound(handler httpInternal.HandlerFunc) {
 	app.router.SetNotFound(handler)
 }
 
+func (app *Application) GetRoutes() []httpInternal.Route {
+	return app.router.GetRoutes()
+}
+
 // Backward compatibility methods with lowercase names
 func (app *Application) Get(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
 	app.router.GET(pattern, handler, middleware...)
@@ -467,6 +471,7 @@ func (app *Application) TemplateEngine() httpInternal.TemplateEngine {
 type HTTPErrorHandlerAdapter struct {
 	handler *ErrorHandler
 }
+
 
 func (a *HTTPErrorHandlerAdapter) Handle(ctx httpInternal.Context, err error) {
 	// For now, use a simple error response until we fully migrate
