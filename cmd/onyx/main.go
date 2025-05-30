@@ -692,7 +692,7 @@ func scheduleList(args []string) error {
 	fmt.Println("  // Setup your scheduled tasks here")
 	fmt.Println("  jobs := app.Schedule().GetJobs()")
 	fmt.Println("  for name, job := range jobs {")
-	fmt.Println("    fmt.Printf(\"%%v %%v %%v\\n\", name, job.GetExpression(), job.task.GetDescription())")
+	fmt.Println("    fmt.Println(name, job.GetExpression(), job.task.GetDescription())")
 	fmt.Println("  }")
 	
 	return nil
@@ -1209,7 +1209,7 @@ func routeList(args []string) error {
 	fmt.Println("  loadRoutes(app)")
 	fmt.Println("  routes := app.Router.GetRoutes()")
 	fmt.Println("  for _, route := range routes {")
-	fmt.Println("    fmt.Printf(\"%%v %%v %%v\\n\", route.Method, route.Pattern, route.Handler)")
+	fmt.Println("    fmt.Println(route.Method, route.Pattern, route.Handler)")
 	fmt.Println("  }")
 	fmt.Println()
 	fmt.Printf("%-8s %-30s %-20s %s\n", "Method", "URI", "Name", "Action")

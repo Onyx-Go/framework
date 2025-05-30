@@ -326,39 +326,37 @@ func (b *APIDocumentationBuilder) ParseAnnotationsFromSource(sourceCode string) 
 	}
 
 	lines := strings.Split(sourceCode, "\n")
-	var currentDoc *RouteDocumentation
-	var currentRoute string
+	var tempDoc *RouteDocumentation
+	var routeKey string
 
+	// First pass: collect all annotations and find the router annotation
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		
-		// Check for router annotation to identify the route
-		if match := patterns["router"].FindStringSubmatch(line); match != nil {
-			if currentDoc != nil && currentRoute != "" {
-				annotations[currentRoute] = currentDoc
-			}
-			currentRoute = fmt.Sprintf("%s %s", strings.ToUpper(match[2]), match[1])
-			currentDoc = &RouteDocumentation{
+		// Initialize temp doc if we encounter any annotation
+		if strings.Contains(line, "@") && tempDoc == nil {
+			tempDoc = &RouteDocumentation{
 				Responses: make(map[string]ResponseDoc),
 			}
+		}
+
+		if tempDoc == nil {
 			continue
 		}
 
-		if currentDoc == nil {
-			continue
-		}
-
-		// Parse other annotations
-		if match := patterns["summary"].FindStringSubmatch(line); match != nil {
-			currentDoc.Summary = strings.TrimSpace(match[1])
+		// Check for router annotation to identify the route
+		if match := patterns["router"].FindStringSubmatch(line); match != nil {
+			routeKey = fmt.Sprintf("%s %s", strings.ToUpper(match[2]), match[1])
+		} else if match := patterns["summary"].FindStringSubmatch(line); match != nil {
+			tempDoc.Summary = strings.TrimSpace(match[1])
 		} else if match := patterns["description"].FindStringSubmatch(line); match != nil {
-			currentDoc.Description = strings.TrimSpace(match[1])
+			tempDoc.Description = strings.TrimSpace(match[1])
 		} else if match := patterns["tags"].FindStringSubmatch(line); match != nil {
 			tags := strings.Split(match[1], ",")
 			for i, tag := range tags {
 				tags[i] = strings.TrimSpace(tag)
 			}
-			currentDoc.Tags = tags
+			tempDoc.Tags = tags
 		} else if match := patterns["param"].FindStringSubmatch(line); match != nil {
 			param := ParameterDoc{
 				Name:        match[1],
@@ -367,10 +365,10 @@ func (b *APIDocumentationBuilder) ParseAnnotationsFromSource(sourceCode string) 
 				Required:    match[4] == "true",
 				Description: match[5],
 			}
-			currentDoc.Parameters = append(currentDoc.Parameters, param)
+			tempDoc.Parameters = append(tempDoc.Parameters, param)
 		} else if match := patterns["success"].FindStringSubmatch(line); match != nil {
 			code := match[1]
-			currentDoc.Responses[code] = ResponseDoc{
+			tempDoc.Responses[code] = ResponseDoc{
 				Description: match[4],
 				Schema: &OpenAPISchema{
 					Type: match[3],
@@ -378,20 +376,20 @@ func (b *APIDocumentationBuilder) ParseAnnotationsFromSource(sourceCode string) 
 			}
 		} else if match := patterns["failure"].FindStringSubmatch(line); match != nil {
 			code := match[1]
-			currentDoc.Responses[code] = ResponseDoc{
+			tempDoc.Responses[code] = ResponseDoc{
 				Description: match[4],
 				Schema: &OpenAPISchema{
 					Type: match[3],
 				},
 			}
 		} else if patterns["deprecated"].MatchString(line) {
-			currentDoc.Deprecated = true
+			tempDoc.Deprecated = true
 		}
 	}
 
-	// Add the last route if exists
-	if currentDoc != nil && currentRoute != "" {
-		annotations[currentRoute] = currentDoc
+	// Add the route if we found both annotations and route
+	if tempDoc != nil && routeKey != "" {
+		annotations[routeKey] = tempDoc
 	}
 
 	return annotations
@@ -578,19 +576,24 @@ func (b *APIDocumentationBuilder) GetAllRoutes() map[string]*RouteDocumentation 
 func (b *APIDocumentationBuilder) ValidateSpec() []string {
 	var errors []string
 	
+	// Basic config validation (can be done without router)
+	if b.config.Title == "" {
+		errors = append(errors, "API title is required")
+	}
+	
+	if b.config.Version == "" {
+		errors = append(errors, "API version is required")
+	}
+	
+	// Only attempt to generate spec if router is set
+	if b.router == nil {
+		return errors
+	}
+	
 	spec, err := b.GenerateOpenAPISpec()
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to generate spec: %v", err))
 		return errors
-	}
-	
-	// Basic validation
-	if spec.Info.Title == "" {
-		errors = append(errors, "API title is required")
-	}
-	
-	if spec.Info.Version == "" {
-		errors = append(errors, "API version is required")
 	}
 	
 	// Validate paths
