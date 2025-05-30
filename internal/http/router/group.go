@@ -9,74 +9,74 @@ import (
 // RouteGroup represents a group of routes with a common prefix and middleware
 type RouteGroup struct {
 	router     *Router
-	prefix     string
+	Prefix_    string // Export with underscore to avoid conflicts
 	middleware []httpInternal.MiddlewareFunc
 }
 
 // GET registers a GET route in the group
 func (g *RouteGroup) GET(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.GET(fullPattern, handler, allMiddleware...)
 }
 
 // POST registers a POST route in the group
 func (g *RouteGroup) POST(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.POST(fullPattern, handler, allMiddleware...)
 }
 
 // PUT registers a PUT route in the group
 func (g *RouteGroup) PUT(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.PUT(fullPattern, handler, allMiddleware...)
 }
 
 // DELETE registers a DELETE route in the group
 func (g *RouteGroup) DELETE(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.DELETE(fullPattern, handler, allMiddleware...)
 }
 
 // PATCH registers a PATCH route in the group
 func (g *RouteGroup) PATCH(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.PATCH(fullPattern, handler, allMiddleware...)
 }
 
 // OPTIONS registers an OPTIONS route in the group
 func (g *RouteGroup) OPTIONS(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.OPTIONS(fullPattern, handler, allMiddleware...)
 }
 
 // HEAD registers a HEAD route in the group
 func (g *RouteGroup) HEAD(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.HEAD(fullPattern, handler, allMiddleware...)
 }
 
 // ANY registers a route for all HTTP methods in the group
 func (g *RouteGroup) ANY(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
-	fullPattern := g.prefix + pattern
+	fullPattern := g.Prefix_ + pattern
 	allMiddleware := append(g.middleware, middleware...)
 	g.router.ANY(fullPattern, handler, allMiddleware...)
 }
 
 // Group creates a nested route group with additional prefix and middleware
 func (g *RouteGroup) Group(prefix string, middleware ...httpInternal.MiddlewareFunc) httpInternal.RouteGroup {
-	fullPrefix := g.prefix + strings.TrimSuffix(prefix, "/")
+	fullPrefix := g.Prefix_ + strings.TrimSuffix(prefix, "/")
 	allMiddleware := append(g.middleware, middleware...)
 	
 	return &RouteGroup{
 		router:     g.router,
-		prefix:     fullPrefix,
+		Prefix_:    fullPrefix,
 		middleware: allMiddleware,
 	}
 }
@@ -88,7 +88,7 @@ func (g *RouteGroup) Use(middleware ...httpInternal.MiddlewareFunc) {
 
 // Prefix returns the current prefix of the route group
 func (g *RouteGroup) Prefix() string {
-	return g.prefix
+	return g.Prefix_
 }
 
 // Middleware returns the middleware stack of the route group
@@ -113,4 +113,25 @@ type ResourceController interface {
 	Store(httpInternal.Context) error   // Create a new resource
 	Update(httpInternal.Context) error  // Update an existing resource
 	Destroy(httpInternal.Context) error // Delete a resource
+}
+
+// Backward compatibility methods with lowercase names for API compatibility
+func (g *RouteGroup) Get(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	g.GET(pattern, handler, middleware...)
+}
+
+func (g *RouteGroup) Post(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	g.POST(pattern, handler, middleware...)
+}
+
+func (g *RouteGroup) Put(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	g.PUT(pattern, handler, middleware...)
+}
+
+func (g *RouteGroup) Delete(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	g.DELETE(pattern, handler, middleware...)
+}
+
+func (g *RouteGroup) Patch(pattern string, handler httpInternal.HandlerFunc, middleware ...httpInternal.MiddlewareFunc) {
+	g.PATCH(pattern, handler, middleware...)
 }

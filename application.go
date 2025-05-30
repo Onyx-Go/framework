@@ -6,17 +6,119 @@ import (
 	"time"
 
 	httpInternal "github.com/onyx-go/framework/internal/http"
-	"github.com/onyx-go/framework/internal/http/context"
-	"github.com/onyx-go/framework/internal/http/router"
+	contextImpl "github.com/onyx-go/framework/internal/http/context"
+	routerImpl "github.com/onyx-go/framework/internal/http/router"
 )
 
-// Type aliases for backward compatibility with old types  
-type Context = httpInternal.Context
-type HandlerFunc func(Context) error
+// Wrapper types for backward compatibility
+type Context = *contextImpl.Context
+type HandlerFunc func(Context) error  
 type MiddlewareFunc func(Context) error
-type Router = httpInternal.Router
-type RouteGroup = httpInternal.RouteGroup
+
+// Router wrapper
+type Router struct {
+	*routerImpl.Router
+}
+
+// Router wrapper methods
+func (r *Router) Group(prefix string, middleware ...MiddlewareFunc) *RouteGroup {
+	// Convert middleware to internal types
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	internalGroup := r.Router.Group(prefix, internalMiddleware...).(*routerImpl.RouteGroup)
+	return wrapRouteGroup(internalGroup)
+}
+
+// RouteGroup wrapper  
+type RouteGroup struct {
+	*routerImpl.RouteGroup
+	prefix string
+}
+
 type Route = httpInternal.Route
+
+// RouteGroup compatibility methods
+func (rg *RouteGroup) Get(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Get(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Post(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Post(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Put(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Put(pattern, internalHandler, internalMiddleware...)
+}
+
+func (rg *RouteGroup) Delete(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	// Convert handler and middleware to internal types
+	internalHandler := func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+	
+	var internalMiddleware []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		internalMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		internalMiddleware = append(internalMiddleware, internalMw)
+	}
+	
+	rg.RouteGroup.Delete(pattern, internalHandler, internalMiddleware...)
+}
+
+// Initialize the prefix field when creating RouteGroup wrappers
+func wrapRouteGroup(internal *routerImpl.RouteGroup) *RouteGroup {
+	return &RouteGroup{
+		RouteGroup: internal,
+		prefix:     internal.Prefix_,
+	}
+}
 
 type Application struct {
 	router         httpInternal.Router
@@ -151,16 +253,15 @@ func (app *Application) Use(middleware ...httpInternal.MiddlewareFunc) {
 	app.router.Use(middleware...)
 }
 
-// UseOld accepts old-style middleware for backward compatibility
-func (app *Application) UseOld(middleware MiddlewareFunc) {
+// UseMiddleware accepts old-style middleware for backward compatibility
+func (app *Application) UseMiddleware(middleware MiddlewareFunc) {
 	// Convert old middleware to new style
 	converted := func(c httpInternal.Context) error {
-		// This is a temporary bridge - we need to create a wrapper
-		// For now, this will cause a compilation issue until we fully convert
-		return fmt.Errorf("old middleware not yet supported in new router")
+		return middleware(c.(*contextImpl.Context))
 	}
 	app.router.Use(converted)
 }
+
 
 func (app *Application) Group(prefix string, middleware ...httpInternal.MiddlewareFunc) httpInternal.RouteGroup {
 	return app.router.Group(prefix, middleware...)
@@ -195,18 +296,65 @@ func (app *Application) Options(pattern string, handler httpInternal.HandlerFunc
 	app.router.OPTIONS(pattern, handler, middleware...)
 }
 
+// Handlers with old-style function signatures for backward compatibility
+func (app *Application) GetHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Get(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PostHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Post(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PutHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Put(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) DeleteHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Delete(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) PatchHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Patch(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) OptionsHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.Options(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+func (app *Application) HeadHandler(pattern string, handler HandlerFunc, middleware ...MiddlewareFunc) {
+	app.HEAD(pattern, app.convertHandler(handler), app.convertMiddleware(middleware...)...)
+}
+
+// Helper functions to convert between old and new function types
+func (app *Application) convertHandler(handler HandlerFunc) httpInternal.HandlerFunc {
+	return func(c httpInternal.Context) error {
+		return handler(c.(*contextImpl.Context))
+	}
+}
+
+func (app *Application) convertMiddleware(middleware ...MiddlewareFunc) []httpInternal.MiddlewareFunc {
+	var converted []httpInternal.MiddlewareFunc
+	for _, mw := range middleware {
+		convertedMw := func(c httpInternal.Context) error {
+			return mw(c.(*contextImpl.Context))
+		}
+		converted = append(converted, convertedMw)
+	}
+	return converted
+}
+
 // Router property for backward compatibility  
-func (app *Application) Router() httpInternal.Router {
-	return app.router
+func (app *Application) Router() *Router {
+	return &Router{Router: app.router.(*routerImpl.Router)}
 }
 
 // Constructor functions for backward compatibility
-func NewRouter() httpInternal.Router {
-	return router.NewRouter()
+func NewRouter() *Router {
+	return &Router{Router: routerImpl.NewRouter()}
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request, app httpInternal.Application) Context {
-	return context.NewContext(w, r, app)
+	return contextImpl.NewContext(w, r, app)
 }
 
 func (app *Application) ConfigureLogging(config LoggingConfig) error {

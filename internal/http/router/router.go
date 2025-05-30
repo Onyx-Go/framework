@@ -108,7 +108,7 @@ func (r *Router) ANY(pattern string, handler httpInternal.HandlerFunc, middlewar
 func (r *Router) Group(prefix string, middleware ...httpInternal.MiddlewareFunc) httpInternal.RouteGroup {
 	return &RouteGroup{
 		router:     r,
-		prefix:     strings.TrimSuffix(prefix, "/"),
+		Prefix_:    strings.TrimSuffix(prefix, "/"),
 		middleware: middleware,
 	}
 }
