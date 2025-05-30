@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	httpInternal "github.com/onyx-go/framework/internal/http"
@@ -527,11 +528,47 @@ type HTTPErrorHandlerAdapter struct {
 
 
 func (a *HTTPErrorHandlerAdapter) Handle(ctx httpInternal.Context, err error) {
-	// For now, use a simple error response until we fully migrate
-	if httpErr, ok := err.(*HTTPError); ok {
-		ctx.String(httpErr.Code, httpErr.Message)
+	// Check if client accepts JSON
+	acceptHeader := ctx.Request().Header.Get("Accept")
+	wantsJSON := strings.Contains(acceptHeader, "application/json")
+	
+	var statusCode int
+	var message string
+	var httpErr *HTTPError
+	
+	if he, ok := err.(*HTTPError); ok {
+		httpErr = he
+		statusCode = he.Code
+		message = he.Message
 	} else {
-		ctx.String(500, "Internal Server Error")
+		statusCode = 500
+		message = "Internal Server Error"
+		httpErr = NewHTTPError(500, message)
+	}
+	
+	if wantsJSON {
+		// Return JSON error response
+		errorData := map[string]interface{}{
+			"status_code": statusCode,
+			"message":     message,
+			"type":        "error",
+		}
+		
+		// Add context fields directly to error data if available
+		if httpErr.Context != nil {
+			for key, value := range httpErr.Context {
+				errorData[key] = value
+			}
+		}
+		
+		errorResponse := map[string]interface{}{
+			"error": errorData,
+		}
+		
+		ctx.JSON(statusCode, errorResponse)
+	} else {
+		// Return plain text response
+		ctx.String(statusCode, message)
 	}
 }
 

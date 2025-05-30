@@ -246,6 +246,10 @@ func TestPanicRecovery(t *testing.T) {
 		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 	
+	// Debug: Print actual response
+	t.Logf("Response body: %s", w.Body.String())
+	t.Logf("Response headers: %v", w.Header())
+	
 	var response map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse JSON response: %v", err)
@@ -318,6 +322,10 @@ func TestNotFoundRoutes(t *testing.T) {
 	if w.Code != 404 {
 		t.Errorf("Expected status 404, got %d", w.Code)
 	}
+	
+	// Debug: Print actual response
+	t.Logf("Response body: %s", w.Body.String())
+	t.Logf("Response headers: %v", w.Header())
 	
 	var response map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {

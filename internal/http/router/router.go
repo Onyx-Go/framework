@@ -33,7 +33,20 @@ func NewRouter() *Router {
 		routes:     make([]*route, 0),
 		middleware: make([]httpInternal.MiddlewareFunc, 0),
 		notFound: func(c httpInternal.Context) error {
-			return c.String(404, "Not Found")
+			// Create a not found error and let the error handler deal with it
+			// This allows proper JSON responses when requested
+			acceptHeader := c.Request().Header.Get("Accept")
+			if strings.Contains(acceptHeader, "application/json") {
+				return c.JSON(404, map[string]interface{}{
+					"error": map[string]interface{}{
+						"status_code": 404,
+						"message":     "Page not found",
+						"type":        "error",
+					},
+				})
+			} else {
+				return c.String(404, "Not Found")
+			}
 		},
 	}
 }
